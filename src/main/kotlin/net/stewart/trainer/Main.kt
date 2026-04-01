@@ -30,6 +30,7 @@ fun main(args: Array<String>) {
     }
 
     val port = args.indexOf("--port").let { if (it >= 0) args.getOrNull(it + 1)?.toIntOrNull() else null } ?: 9090
+    val internalPort = args.indexOf("--internal_port").let { if (it >= 0) args.getOrNull(it + 1)?.toIntOrNull() else null } ?: 8081
 
     // Initialize database
     val h2Password = System.getProperty("H2_PASSWORD") ?: System.getenv("H2_PASSWORD")
@@ -51,6 +52,7 @@ fun main(args: Array<String>) {
 
     // Initialize services
     ServiceRegistry.init(db.dataSource)
+    net.stewart.trainer.service.LegalService.refresh()
 
     // Periodic cleanup
     val scheduler = Executors.newSingleThreadScheduledExecutor { r ->
@@ -69,12 +71,12 @@ fun main(args: Array<String>) {
     scheduler.scheduleAtFixedRate(cleanupTask, 24, 24, TimeUnit.HOURS)
 
     // Start server
-    ArmeriaServer.start(port)
+    ArmeriaServer.start(port, internalPort)
     Runtime.getRuntime().addShutdownHook(Thread {
         ArmeriaServer.stop()
         db.destroy()
     })
 
-    log.info("Trainer started on port {}", port)
+    log.info("Trainer started: HTTPS on {}, internal HTTP on {}", port, internalPort)
     Thread.currentThread().join()
 }

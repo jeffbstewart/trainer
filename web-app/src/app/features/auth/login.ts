@@ -72,7 +72,15 @@ export class LoginComponent implements OnInit {
     this.submitting.set(true);
     this.error.set('');
     try {
-      await this.auth.login(this.username(), this.password());
+      const response = await this.auth.login(this.username(), this.password());
+      if (response.password_change_required) {
+        this.router.navigate(['/change-password']);
+        return;
+      }
+      if (response.legal_acceptance_required) {
+        this.router.navigate(['/accept-legal']);
+        return;
+      }
       this.router.navigate(['/']);
     } catch (e: unknown) {
       const err = e as { error?: { error?: string; retry_after?: number } };

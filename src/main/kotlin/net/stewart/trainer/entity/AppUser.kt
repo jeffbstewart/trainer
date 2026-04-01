@@ -14,6 +14,12 @@ data class AppUser(
     var access_level: Int = 1,
     var locked: Boolean = false,
     var must_change_password: Boolean = false,
+    var trainer_id: Long? = null,
+    var created_by: Long? = null,
+    var privacy_policy_version: Int? = null,
+    var privacy_policy_agreed_at: LocalDateTime? = null,
+    var terms_of_use_version: Int? = null,
+    var terms_of_use_agreed_at: LocalDateTime? = null,
     var created_at: LocalDateTime? = null,
     var updated_at: LocalDateTime? = null
 ) : KEntity<Long> {

@@ -6,6 +6,7 @@ import com.linecorp.armeria.server.DecoratingHttpServiceFunction
 import com.linecorp.armeria.server.HttpService
 import com.linecorp.armeria.server.ServiceRequestContext
 import net.stewart.trainer.entity.AppUser
+import net.stewart.trainer.service.LegalService
 import net.stewart.trainer.service.ServiceRegistry
 
 /**
@@ -69,15 +70,20 @@ class AuthDecorator : DecoratingHttpServiceFunction {
         val authUser = token?.let { sessions.validateToken(it) }
         val user = authUser?.let { AppUser.findById(it.id) }
         if (user != null) {
-            // Block users who must change password (except password-change endpoint)
-            if (user.must_change_password) {
-                val path = ctx.path()
-                if (path != "/api/auth/change-password" && path != "/api/auth/logout") {
-                    return HttpResponse.of(HttpStatus.FORBIDDEN)
-                }
+            val path = ctx.path()
+            val allowedPaths = setOf("/api/auth/change-password", "/api/auth/logout", "/api/auth/accept-legal")
+
+            // Password change required — block everything except password change and logout
+            if (user.must_change_password && path !in allowedPaths) {
+                return HttpResponse.of(HttpStatus.FORBIDDEN)
             }
-            // CSRF: require X-Requested-With header on state-changing methods.
-            // Browsers don't send custom headers on cross-origin form POSTs.
+
+            // Legal compliance — block everything except legal acceptance, password change, and logout
+            if (!user.must_change_password && !LegalService.isCompliant(user) && path !in allowedPaths) {
+                return HttpResponse.of(HttpStatus.FORBIDDEN)
+            }
+
+            // CSRF: require X-Requested-With header on state-changing methods
             val method = req.method().name
             if (method in setOf("POST", "PUT", "DELETE", "PATCH")) {
                 if (req.headers().get("x-requested-with") == null) {

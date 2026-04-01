@@ -1,6 +1,8 @@
 package net.stewart.trainer.armeria
 
 import com.linecorp.armeria.common.HttpResponse
+import com.linecorp.armeria.common.HttpStatus
+import com.linecorp.armeria.server.DecoratingHttpServiceFunction
 import com.linecorp.armeria.server.Server
 import com.linecorp.armeria.server.file.FileService
 import com.linecorp.armeria.server.file.HttpFile
@@ -12,12 +14,17 @@ object ArmeriaServer {
     private val log = LoggerFactory.getLogger(ArmeriaServer::class.java)
     private var server: Server? = null
 
-    fun start(port: Int) {
+    fun start(port: Int, internalPort: Int = 0) {
         val authDecorator = AuthDecorator()
 
-        val sb = Server.builder().http(port)
+        val sb = Server.builder()
 
-        // Health check (no auth)
+        // Main port: HTTPS with self-signed certificate
+        sb.https(port)
+        sb.tlsSelfSigned()
+        log.info("TLS: using self-signed certificate on port {}", port)
+
+        // Health check (no auth — available on both ports)
         sb.annotatedService(HealthHttpService())
 
         // Auth endpoints (no decorator — own validation)
@@ -48,13 +55,34 @@ object ArmeriaServer {
         // Root redirect
         sb.service("/") { _, _ -> HttpResponse.ofRedirect("/app/") }
 
+        // Internal port: plain HTTP for health checks and metrics (LAN only)
+        if (internalPort > 0) {
+            sb.http(internalPort)
+
+            val internalOnly = internalOnlyDecorator(internalPort)
+            sb.annotatedService().decorator(internalOnly).build(HealthHttpService())
+        }
+
         server = sb.build()
         server!!.start().join()
-        log.info("Armeria server started on port {}", port)
+
+        if (internalPort > 0) {
+            log.info("Armeria server started: HTTPS on {}, internal HTTP on {}", port, internalPort)
+        } else {
+            log.info("Armeria server started: HTTPS on {}", port)
+        }
     }
 
     fun stop() {
         server?.stop()?.join()
         log.info("Armeria server stopped")
+    }
+
+    private fun internalOnlyDecorator(allowedPort: Int) = DecoratingHttpServiceFunction { delegate, ctx, req ->
+        if (ctx.localAddress().port == allowedPort) {
+            delegate.serve(ctx, req)
+        } else {
+            HttpResponse.of(HttpStatus.NOT_FOUND)
+        }
     }
 }

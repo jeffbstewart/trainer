@@ -13,6 +13,11 @@ export const routes: Routes = [
     loadComponent: () => import('./features/auth/setup').then(m => m.SetupComponent),
   },
   {
+    path: 'accept-legal',
+    canActivate: [authGuard],
+    loadComponent: () => import('./features/auth/accept-legal').then(m => m.AcceptLegalComponent),
+  },
+  {
     path: '',
     canActivate: [authGuard],
     loadComponent: () => import('./core/shell/shell').then(m => m.ShellComponent),

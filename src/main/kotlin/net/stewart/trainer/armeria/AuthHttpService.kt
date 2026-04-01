@@ -14,6 +14,7 @@ import net.stewart.auth.PasswordService
 import net.stewart.auth.SessionService
 import net.stewart.trainer.entity.AppConfig
 import net.stewart.trainer.entity.AppUser
+import net.stewart.trainer.service.LegalService
 import net.stewart.trainer.service.ServiceRegistry
 import java.time.LocalDateTime
 
@@ -25,12 +26,13 @@ class AuthHttpService {
     @Get("/api/auth/discover")
     fun discover(): HttpResponse {
         val setupRequired = !ServiceRegistry.userRepository.hasUsers()
-        val configs = AppConfig.findAll()
         val result = mutableMapOf<String, Any>(
             "setup_required" to setupRequired
         )
-        configs.firstOrNull { it.config_key == "terms_of_use_url" }?.let { result["terms_of_use_url"] = it.config_val }
-        configs.firstOrNull { it.config_key == "privacy_policy_url" }?.let { result["privacy_policy_url"] = it.config_val }
+        if (LegalService.termsOfUseUrl != null) result["terms_of_use_url"] = LegalService.termsOfUseUrl!!
+        if (LegalService.privacyPolicyUrl != null) result["privacy_policy_url"] = LegalService.privacyPolicyUrl!!
+        if (LegalService.requiredTermsOfUseVersion > 0) result["terms_of_use_version"] = LegalService.requiredTermsOfUseVersion
+        if (LegalService.requiredPrivacyPolicyVersion > 0) result["privacy_policy_version"] = LegalService.requiredPrivacyPolicyVersion
         return json(result)
     }
 
@@ -51,7 +53,8 @@ class AuthHttpService {
 
                 val response = mutableMapOf<String, Any?>(
                     "ok" to true,
-                    "password_change_required" to appUser.must_change_password
+                    "password_change_required" to appUser.must_change_password,
+                    "legal_acceptance_required" to !LegalService.isCompliant(appUser)
                 )
 
                 HttpResponse.builder()
@@ -96,11 +99,14 @@ class AuthHttpService {
         if (!termsUrl.isNullOrBlank()) {
             if (!isValidLegalUrl(termsUrl)) return badRequest("Terms URL must be https:// or about:blank")
             AppConfig(config_key = "terms_of_use_url", config_val = termsUrl).save()
+            AppConfig(config_key = "terms_of_use_version", config_val = "1").save()
         }
         if (!privacyUrl.isNullOrBlank()) {
             if (!isValidLegalUrl(privacyUrl)) return badRequest("Privacy URL must be https:// or about:blank")
             AppConfig(config_key = "privacy_policy_url", config_val = privacyUrl).save()
+            AppConfig(config_key = "privacy_policy_version", config_val = "1").save()
         }
+        LegalService.refresh()
 
         val ua = ctx.request().headers().get("user-agent") ?: "unknown"
         val token = ServiceRegistry.sessions.createSession(user.toAuthUser(), ua)
@@ -156,6 +162,26 @@ class AuthHttpService {
         user.save()
 
         ServiceRegistry.sessions.revokeAllForUser(user.id!!)
+
+        return json(mapOf("ok" to true))
+    }
+
+    @Post("/api/auth/accept-legal")
+    fun acceptLegal(ctx: ServiceRequestContext): HttpResponse {
+        val (user, err) = AuthDecorator.requireUser(ctx)
+        if (user == null) return err!!
+
+        val now = LocalDateTime.now()
+        if (LegalService.requiredPrivacyPolicyVersion > 0) {
+            user.privacy_policy_version = LegalService.requiredPrivacyPolicyVersion
+            user.privacy_policy_agreed_at = now
+        }
+        if (LegalService.requiredTermsOfUseVersion > 0) {
+            user.terms_of_use_version = LegalService.requiredTermsOfUseVersion
+            user.terms_of_use_agreed_at = now
+        }
+        user.updated_at = now
+        user.save()
 
         return json(mapOf("ok" to true))
     }

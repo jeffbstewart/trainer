@@ -4,6 +4,10 @@ import { firstValueFrom } from 'rxjs';
 
 export interface DiscoverResponse {
   setup_required: boolean;
+  terms_of_use_url?: string;
+  privacy_policy_url?: string;
+  terms_of_use_version?: number;
+  privacy_policy_version?: number;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -17,9 +21,9 @@ export class AuthService {
     return firstValueFrom(this.http.get<DiscoverResponse>('/api/auth/discover'));
   }
 
-  async login(username: string, password: string): Promise<{ ok: boolean; password_change_required?: boolean }> {
+  async login(username: string, password: string): Promise<{ ok: boolean; password_change_required?: boolean; legal_acceptance_required?: boolean }> {
     const response = await firstValueFrom(
-      this.http.post<{ ok: boolean; password_change_required?: boolean }>('/api/auth/login', { username, password })
+      this.http.post<{ ok: boolean; password_change_required?: boolean; legal_acceptance_required?: boolean }>('/api/auth/login', { username, password })
     );
     if (response.ok) this.authenticated.set(true);
     return response;

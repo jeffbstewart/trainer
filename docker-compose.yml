@@ -1,15 +1,17 @@
 services:
   trainer:
     build: .
-    ports:
-      - "9090:9090"
+    network_mode: host
+    # ports:
+    #   - "9090:9090"        # Main app (HTTPS)
+    #   - "8081:8081"        # Internal health/metrics (HTTP, LAN only)
     volumes:
       - trainer-data:/cache
     environment:
       - H2_PASSWORD=${H2_PASSWORD:?Set H2_PASSWORD in .env}
       - H2_FILE_PASSWORD=${H2_FILE_PASSWORD:?Set H2_FILE_PASSWORD in .env}
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:9090/health"]
+      test: ["CMD", "curl", "-sf", "http://localhost:8081/health"]
       interval: 30s
       timeout: 5s
       retries: 3
