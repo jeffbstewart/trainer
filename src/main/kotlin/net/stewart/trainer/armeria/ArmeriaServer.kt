@@ -32,10 +32,11 @@ object ArmeriaServer {
             val fileService = FileService.of(spaDir)
             val indexService = HttpFile.of(spaDir.resolve("index.html")).asService()
 
+            val spaDirNormalized = spaDir.toAbsolutePath().normalize()
             sb.serviceUnder("/app/") { ctx, req ->
                 val mappedPath = ctx.mappedPath().removePrefix("/")
-                val file = spaDir.resolve(mappedPath)
-                if (mappedPath.isNotEmpty() && file.toFile().isFile) {
+                val file = spaDir.resolve(mappedPath).toAbsolutePath().normalize()
+                if (mappedPath.isNotEmpty() && file.startsWith(spaDirNormalized) && file.toFile().isFile) {
                     fileService.serve(ctx, req)
                 } else {
                     indexService.serve(ctx, req)

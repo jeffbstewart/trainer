@@ -56,14 +56,17 @@ fun main(args: Array<String>) {
     val scheduler = Executors.newSingleThreadScheduledExecutor { r ->
         Thread(r, "maintenance").apply { isDaemon = true }
     }
-    scheduler.scheduleAtFixedRate({
+    // Run cleanup immediately at startup, then every 24 hours
+    val cleanupTask = Runnable {
         try {
             ServiceRegistry.sessions.cleanupExpired()
             ServiceRegistry.loginService.cleanupOldAttempts()
         } catch (e: Exception) {
             log.warn("Cleanup failed: {}", e.message)
         }
-    }, 24, 24, TimeUnit.HOURS)
+    }
+    cleanupTask.run()
+    scheduler.scheduleAtFixedRate(cleanupTask, 24, 24, TimeUnit.HOURS)
 
     // Start server
     ArmeriaServer.start(port)

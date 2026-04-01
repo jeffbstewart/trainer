@@ -84,19 +84,21 @@ class AuthHttpService {
         val user = AppUser(
             username = username,
             password_hash = PasswordService.hash(password),
-            access_level = 2, // first user is admin
+            access_level = 4, // first user is admin
             created_at = now,
             updated_at = now
         )
         user.save()
 
-        // Store legal document URLs in app_config
+        // Store legal document URLs in app_config (only https:// and about:blank allowed)
         val termsUrl = (body["terms_of_use_url"] as? String)?.trim()
         val privacyUrl = (body["privacy_policy_url"] as? String)?.trim()
         if (!termsUrl.isNullOrBlank()) {
+            if (!isValidLegalUrl(termsUrl)) return badRequest("Terms URL must be https:// or about:blank")
             AppConfig(config_key = "terms_of_use_url", config_val = termsUrl).save()
         }
         if (!privacyUrl.isNullOrBlank()) {
+            if (!isValidLegalUrl(privacyUrl)) return badRequest("Privacy URL must be https:// or about:blank")
             AppConfig(config_key = "privacy_policy_url", config_val = privacyUrl).save()
         }
 
@@ -130,8 +132,39 @@ class AuthHttpService {
             .build()
     }
 
+    @Post("/api/auth/change-password")
+    fun changePassword(ctx: ServiceRequestContext): HttpResponse {
+        val (user, err) = AuthDecorator.requireUser(ctx)
+        if (user == null) return err!!
+
+        val body = gson.fromJson(ctx.request().aggregate().join().contentUtf8(), Map::class.java)
+        val currentPassword = body["current_password"] as? String ?: return badRequest("current_password required")
+        val newPassword = body["new_password"] as? String ?: return badRequest("new_password required")
+
+        if (!PasswordService.verify(currentPassword, user.password_hash)) {
+            return json(mapOf("ok" to false, "error" to "Current password is incorrect"))
+        }
+
+        val violations = PasswordService.validate(newPassword, user.username, user.password_hash)
+        if (violations.isNotEmpty()) {
+            return json(mapOf("ok" to false, "error" to violations.first()))
+        }
+
+        user.password_hash = PasswordService.hash(newPassword)
+        user.must_change_password = false
+        user.updated_at = LocalDateTime.now()
+        user.save()
+
+        ServiceRegistry.sessions.revokeAllForUser(user.id!!)
+
+        return json(mapOf("ok" to true))
+    }
+
     private fun json(data: Any, status: HttpStatus = HttpStatus.OK): HttpResponse =
         HttpResponse.of(status, MediaType.JSON_UTF_8, gson.toJson(data))
+
+    private fun isValidLegalUrl(url: String): Boolean =
+        url == "about:blank" || url.startsWith("https://")
 
     private fun badRequest(msg: String): HttpResponse =
         json(mapOf("error" to msg), HttpStatus.BAD_REQUEST)
