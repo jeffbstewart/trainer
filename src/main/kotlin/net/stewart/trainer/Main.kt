@@ -43,7 +43,7 @@ fun main(args: Array<String>) {
         filePassword = h2FilePassword,
         priorPassword = System.getProperty("H2_PRIOR_PASSWORD") ?: System.getenv("H2_PRIOR_PASSWORD") ?: "",
         poolName = "trainer",
-        flywayLocations = listOf("classpath:db/migration", "classpath:db/auth"),
+        flywayLocations = listOf("classpath:db/migration"),
     ))
     db.init()
     JdbiOrm.setDataSource(db.dataSource)
