@@ -1,0 +1,21 @@
+# Gradle
+build/
+.gradle/
+
+# IDE
+.idea/
+*.iml
+out/
+
+# Data
+data/
+secrets/
+
+# Node
+web-app/node_modules/
+web-app/.angular/
+web-app/dist/
+
+# OS
+.DS_Store
+Thumbs.db
