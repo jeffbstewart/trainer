@@ -134,6 +134,9 @@ export class UserDetailComponent implements OnInit {
   }
 
   async resetPassword(): Promise<void> {
+    const u = this.user();
+    if (!u) return;
+    if (!confirm(`Reset password for "${u.username}"? This will generate a temporary password and sign them out of all sessions.`)) return;
     this.actionError.set('');
     this.tempPassword.set('');
     try {
