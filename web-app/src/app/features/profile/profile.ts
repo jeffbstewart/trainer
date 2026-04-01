@@ -117,19 +117,12 @@ export class ProfileComponent implements OnInit {
   }
 
   async ngOnInit(): Promise<void> {
-    const [p, s] = await Promise.all([
-      firstValueFrom(this.http.get<Profile>('/api/v1/profile')),
-      firstValueFrom(this.http.get<{ sessions: Session[] }>(`/api/v1/users/0/sessions`).pipe()),
-    ]).catch(() => [null, null]);
-
-    if (p) this.profile.set(p);
-    // Load own sessions using own user ID
-    if (p) {
-      try {
-        const data = await firstValueFrom(this.http.get<{ sessions: Session[] }>(`/api/v1/users/${p.id}/sessions`));
-        this.sessions.set(data.sessions);
-      } catch { /* ignore */ }
-    }
+    try {
+      const p = await firstValueFrom(this.http.get<Profile>('/api/v1/profile'));
+      this.profile.set(p);
+      const data = await firstValueFrom(this.http.get<{ sessions: Session[] }>(`/api/v1/users/${p.id}/sessions`));
+      this.sessions.set(data.sessions);
+    } catch { /* ignore */ }
   }
 
   async changePassword(): Promise<void> {

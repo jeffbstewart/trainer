@@ -1,8 +1,10 @@
-import { Component, inject, signal, OnInit, ChangeDetectionStrategy } from '@angular/core';
+import { Component, inject, signal, viewChild, OnInit, AfterViewInit, ChangeDetectionStrategy } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
-import { MatTableModule } from '@angular/material/table';
+import { MatTableModule, MatTableDataSource } from '@angular/material/table';
+import { MatSortModule, MatSort } from '@angular/material/sort';
+import { MatPaginatorModule, MatPaginator } from '@angular/material/paginator';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -17,7 +19,7 @@ interface UserRow {
 @Component({
   selector: 'app-users',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, MatTableModule, MatButtonModule, MatIconModule, MatFormFieldModule, MatInputModule, MatSelectModule],
+  imports: [RouterLink, MatTableModule, MatSortModule, MatPaginatorModule, MatButtonModule, MatIconModule, MatFormFieldModule, MatInputModule, MatSelectModule],
   template: `
     <div class="header-row">
       <h2>Users</h2>
@@ -26,9 +28,15 @@ interface UserRow {
       </button>
     </div>
 
-    <table mat-table [dataSource]="users()" class="user-table">
+    <mat-form-field appearance="outline" class="search-field">
+      <mat-label>Search</mat-label>
+      <mat-icon matPrefix>search</mat-icon>
+      <input matInput (input)="applyFilter($any($event.target).value)" placeholder="Filter by name or role" />
+    </mat-form-field>
+
+    <table mat-table [dataSource]="dataSource" matSort class="user-table">
       <ng-container matColumnDef="username">
-        <th mat-header-cell *matHeaderCellDef>Username</th>
+        <th mat-header-cell *matHeaderCellDef mat-sort-header>Username</th>
         <td mat-cell *matCellDef="let u">
           <a [routerLink]="['/users', u.id]">{{ u.username }}</a>
           @if (u.locked) { <span class="badge locked">Locked</span> }
@@ -36,7 +44,7 @@ interface UserRow {
         </td>
       </ng-container>
       <ng-container matColumnDef="role">
-        <th mat-header-cell *matHeaderCellDef>Role</th>
+        <th mat-header-cell *matHeaderCellDef mat-sort-header>Role</th>
         <td mat-cell *matCellDef="let u">{{ u.role }}</td>
       </ng-container>
       <ng-container matColumnDef="actions">
@@ -48,6 +56,8 @@ interface UserRow {
       <tr mat-header-row *matHeaderRowDef="columns"></tr>
       <tr mat-row *matRowDef="let row; columns: columns;"></tr>
     </table>
+
+    <mat-paginator [pageSizeOptions]="[10, 25, 50]" [pageSize]="25" showFirstLastButtons />
 
     @if (showCreate()) {
       <div class="modal-overlay" (click)="closeCreate()">
@@ -68,7 +78,7 @@ interface UserRow {
           </mat-form-field>
           @if (tempPassword()) {
             <div class="temp-pw-box">
-              <p>Temporary password (show once):</p>
+              <p>Temporary password (shown once):</p>
               <code>{{ tempPassword() }}</code>
             </div>
             <button mat-flat-button (click)="closeCreate()">Done</button>
@@ -85,16 +95,17 @@ interface UserRow {
   styles: `
     .header-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
     h2 { margin: 0; }
+    .search-field { width: 100%; max-width: 400px; margin-bottom: 0.5rem; }
     .user-table { width: 100%; }
-    .user-table a { color: var(--mat-sys-primary, #bb86fc); text-decoration: none; }
+    .user-table a { color: var(--mat-sys-primary, #005cbb); text-decoration: none; }
     .user-table a:hover { text-decoration: underline; }
     .badge { font-size: 0.5625rem; font-weight: 700; padding: 1px 5px; border-radius: 4px; margin-left: 0.375rem;
       &.locked { background: rgba(244,67,54,0.2); color: #f44336; }
       &.pw { background: rgba(255,165,0,0.2); color: #ffa500; }
     }
     .full-width { width: 100%; }
-    .modal-overlay { position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; }
-    .modal-content { background: #2a2a2a; border-radius: 12px; padding: 1.5rem; width: 90%; max-width: 400px;
+    .modal-overlay { position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; }
+    .modal-content { background: var(--mat-sys-surface-container-high, #e9e7eb); color: var(--mat-sys-on-surface, #1a1b1f); border-radius: 12px; padding: 1.5rem; width: 90%; max-width: 400px;
       h3 { margin: 0 0 1rem; }
     }
     .modal-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; }
@@ -106,10 +117,13 @@ interface UserRow {
     }
   `,
 })
-export class UsersComponent implements OnInit {
+export class UsersComponent implements OnInit, AfterViewInit {
   private readonly http = inject(HttpClient);
 
-  readonly users = signal<UserRow[]>([]);
+  readonly sort = viewChild(MatSort);
+  readonly paginator = viewChild(MatPaginator);
+
+  readonly dataSource = new MatTableDataSource<UserRow>([]);
   readonly columns = ['username', 'role', 'actions'];
 
   readonly showCreate = signal(false);
@@ -120,11 +134,29 @@ export class UsersComponent implements OnInit {
 
   async ngOnInit(): Promise<void> { await this.refresh(); }
 
+  ngAfterViewInit(): void {
+    const s = this.sort();
+    const p = this.paginator();
+    if (s) this.dataSource.sort = s;
+    if (p) this.dataSource.paginator = p;
+
+    // Default sort by username ascending
+    if (s) {
+      s.active = 'username';
+      s.direction = 'asc';
+      s.sortChange.emit({ active: 'username', direction: 'asc' });
+    }
+  }
+
   async refresh(): Promise<void> {
     try {
       const d = await firstValueFrom(this.http.get<{ users: UserRow[] }>('/api/v1/users'));
-      this.users.set(d.users);
+      this.dataSource.data = d.users;
     } catch { /* ignore */ }
+  }
+
+  applyFilter(value: string): void {
+    this.dataSource.filter = value.trim().toLowerCase();
   }
 
   openCreate(): void {
@@ -137,7 +169,7 @@ export class UsersComponent implements OnInit {
 
   closeCreate(): void {
     this.showCreate.set(false);
-    if (this.tempPassword()) this.refresh(); // refresh list after creation
+    if (this.tempPassword()) this.refresh();
   }
 
   async submitCreate(): Promise<void> {
