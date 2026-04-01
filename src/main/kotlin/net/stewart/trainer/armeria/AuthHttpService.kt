@@ -16,6 +16,7 @@ import net.stewart.trainer.entity.AppConfig
 import net.stewart.trainer.entity.AppUser
 import net.stewart.trainer.service.LegalService
 import net.stewart.trainer.service.ServiceRegistry
+import net.stewart.trainer.service.UsernameValidator
 import java.time.LocalDateTime
 
 @Blocking
@@ -80,6 +81,8 @@ class AuthHttpService {
         val username = (body["username"] as? String)?.trim() ?: return badRequest("username required")
         val password = body["password"] as? String ?: return badRequest("password required")
 
+        UsernameValidator.validate(username)?.let { return badRequest(it) }
+
         val violations = PasswordService.validate(password, username)
         if (violations.isNotEmpty()) return badRequest(violations.first())
 
@@ -136,54 +139,6 @@ class AuthHttpService {
             .content(MediaType.JSON_UTF_8, """{"ok":true}""")
             .header("Set-Cookie", ServiceRegistry.sessions.buildExpireCookieHeader())
             .build()
-    }
-
-    @Post("/api/v1/auth/change-password")
-    fun changePassword(ctx: ServiceRequestContext): HttpResponse {
-        val (user, err) = AuthDecorator.requireUser(ctx)
-        if (user == null) return err!!
-
-        val body = gson.fromJson(ctx.request().aggregate().join().contentUtf8(), Map::class.java)
-        val currentPassword = body["current_password"] as? String ?: return badRequest("current_password required")
-        val newPassword = body["new_password"] as? String ?: return badRequest("new_password required")
-
-        if (!PasswordService.verify(currentPassword, user.password_hash)) {
-            return json(mapOf("ok" to false, "error" to "Current password is incorrect"))
-        }
-
-        val violations = PasswordService.validate(newPassword, user.username, user.password_hash)
-        if (violations.isNotEmpty()) {
-            return json(mapOf("ok" to false, "error" to violations.first()))
-        }
-
-        user.password_hash = PasswordService.hash(newPassword)
-        user.must_change_password = false
-        user.updated_at = LocalDateTime.now()
-        user.save()
-
-        ServiceRegistry.sessions.revokeAllForUser(user.id!!)
-
-        return json(mapOf("ok" to true))
-    }
-
-    @Post("/api/v1/auth/accept-legal")
-    fun acceptLegal(ctx: ServiceRequestContext): HttpResponse {
-        val (user, err) = AuthDecorator.requireUser(ctx)
-        if (user == null) return err!!
-
-        val now = LocalDateTime.now()
-        if (LegalService.requiredPrivacyPolicyVersion > 0) {
-            user.privacy_policy_version = LegalService.requiredPrivacyPolicyVersion
-            user.privacy_policy_agreed_at = now
-        }
-        if (LegalService.requiredTermsOfUseVersion > 0) {
-            user.terms_of_use_version = LegalService.requiredTermsOfUseVersion
-            user.terms_of_use_agreed_at = now
-        }
-        user.updated_at = now
-        user.save()
-
-        return json(mapOf("ok" to true))
     }
 
     private fun json(data: Any, status: HttpStatus = HttpStatus.OK): HttpResponse =

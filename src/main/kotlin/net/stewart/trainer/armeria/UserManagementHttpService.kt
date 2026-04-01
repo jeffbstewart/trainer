@@ -15,6 +15,7 @@ import net.stewart.auth.PasswordService
 import net.stewart.trainer.entity.AppUser
 import net.stewart.trainer.service.ServiceRegistry
 import net.stewart.trainer.service.TempPasswordGenerator
+import net.stewart.trainer.service.UsernameValidator
 import java.time.LocalDateTime
 
 @Blocking
@@ -61,8 +62,11 @@ class UserManagementHttpService {
         val username = (body["username"] as? String)?.trim() ?: return badRequest("username required")
         val accessLevel = (body["access_level"] as? Number)?.toInt() ?: 1
 
-        // Role enforcement
-        if (accessLevel >= creator.access_level) {
+        UsernameValidator.validate(username)?.let { return badRequest(it) }
+
+        // Role enforcement: admins can create anyone (including other admins),
+        // others can only create below their own level
+        if (!creator.isAdmin() && accessLevel >= creator.access_level) {
             return json(mapOf("error" to "Cannot create a user at or above your own access level"), HttpStatus.FORBIDDEN)
         }
         if (!creator.isManager() && accessLevel >= 2) {

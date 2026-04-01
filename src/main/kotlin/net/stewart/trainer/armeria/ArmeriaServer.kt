@@ -33,6 +33,9 @@ object ArmeriaServer {
         // Impersonation (behind auth — needs admin check)
         sb.annotatedService().decorator(authDecorator).build(ImpersonationHttpService())
 
+        // Account endpoints (behind auth, but allowed through must_change_password/legal blocks)
+        sb.annotatedService().decorator(authDecorator).build(AccountHttpService())
+
         // Authenticated API endpoints
         sb.annotatedService().decorator(authDecorator).build(ProfileHttpService())
         sb.annotatedService().decorator(authDecorator).build(UserManagementHttpService())

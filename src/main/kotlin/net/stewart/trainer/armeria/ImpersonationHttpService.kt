@@ -90,20 +90,20 @@ class ImpersonationHttpService {
         if (impToken != null) {
             val impUser = ServiceRegistry.sessions.revokeByToken(impToken)
 
-            // Find and close the audit log entry
-            val adminUser = AuthDecorator.getUser(ctx)
-            if (adminUser != null && impUser != null) {
+            // Find and close the audit log entry — use getRealAdmin (not getUser, which returns impersonated user)
+            val realAdmin = AuthDecorator.getRealAdmin(ctx) ?: AuthDecorator.getUser(ctx)
+            if (realAdmin != null && impUser != null) {
                 JdbiOrm.jdbi().withHandle<Int, Exception> { handle ->
                     handle.createUpdate(
                         """UPDATE impersonation_log SET ended_at = :now
                            WHERE admin_id = :aid AND impersonated_id = :iid AND ended_at IS NULL"""
                     ).bind("now", LocalDateTime.now())
-                        .bind("aid", adminUser.id)
+                        .bind("aid", realAdmin.id)
                         .bind("iid", impUser.id)
                         .execute()
                 }
                 log.info("AUDIT: Admin '{}' ended impersonation of user id={}",
-                    adminUser.username, impUser.id)
+                    realAdmin.username, impUser.id)
             }
         }
 
