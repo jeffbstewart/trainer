@@ -9,7 +9,10 @@ out/
 
 # Data
 data/
-secrets/
+
+# Secrets (allow example files)
+secrets/*
+!secrets/example.env
 
 # Node
 web-app/node_modules/
