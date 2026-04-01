@@ -23,6 +23,9 @@ export const routes: Routes = [
     loadComponent: () => import('./core/shell/shell').then(m => m.ShellComponent),
     children: [
       { path: '', loadComponent: () => import('./features/home/home').then(m => m.HomeComponent) },
+      { path: 'profile', loadComponent: () => import('./features/profile/profile').then(m => m.ProfileComponent) },
+      { path: 'users', loadComponent: () => import('./features/users/users').then(m => m.UsersComponent) },
+      { path: 'users/:userId', loadComponent: () => import('./features/users/user-detail').then(m => m.UserDetailComponent) },
     ],
   },
 ];

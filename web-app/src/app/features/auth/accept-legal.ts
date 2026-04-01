@@ -91,8 +91,7 @@ export class AcceptLegalComponent implements OnInit {
     this.submitting.set(true);
     this.error.set('');
     try {
-      await firstValueFrom(this.http.post('/api/v1/auth/accept-legal', {},
-        { headers: { 'X-Requested-With': 'XMLHttpRequest' } }));
+      await firstValueFrom(this.http.post('/api/v1/auth/accept-legal', {}));
       this.router.navigate(['/']);
     } catch {
       this.error.set('Failed to record agreement. Please try again.');
