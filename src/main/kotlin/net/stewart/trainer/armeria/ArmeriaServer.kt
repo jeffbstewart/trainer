@@ -30,8 +30,12 @@ object ArmeriaServer {
         // Auth endpoints (no decorator — own validation)
         sb.annotatedService(AuthHttpService())
 
+        // Impersonation (behind auth — needs admin check)
+        sb.annotatedService().decorator(authDecorator).build(ImpersonationHttpService())
+
         // Authenticated API endpoints
         sb.annotatedService().decorator(authDecorator).build(ProfileHttpService())
+        sb.annotatedService().decorator(authDecorator).build(UserManagementHttpService())
 
         // Angular SPA at /app/
         val spaDir = Path.of("spa")

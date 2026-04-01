@@ -24,10 +24,19 @@ class AuthDecorator : DecoratingHttpServiceFunction {
 
     companion object {
         private val USER_ATTR = io.netty.util.AttributeKey.valueOf<AppUser>("auth.user")
+        private val REAL_ADMIN_ATTR = io.netty.util.AttributeKey.valueOf<AppUser>("auth.real_admin")
 
-        /** Returns the authenticated user, or null if not authenticated. */
+        /** Returns the effective user (impersonated user if active, otherwise the real user). */
         fun getUser(ctx: ServiceRequestContext): AppUser? =
             ctx.attr(USER_ATTR)
+
+        /** Returns the real admin behind an impersonation, or null if not impersonating. */
+        fun getRealAdmin(ctx: ServiceRequestContext): AppUser? =
+            ctx.attr(REAL_ADMIN_ATTR)
+
+        /** Returns true if the current request is under impersonation. */
+        fun isImpersonating(ctx: ServiceRequestContext): Boolean =
+            ctx.attr(REAL_ADMIN_ATTR) != null
 
         /** Returns the authenticated user, or an UNAUTHORIZED response. */
         fun requireUser(ctx: ServiceRequestContext): Pair<AppUser?, HttpResponse?> {
@@ -59,19 +68,34 @@ class AuthDecorator : DecoratingHttpServiceFunction {
 
     override fun serve(delegate: HttpService, ctx: ServiceRequestContext, req: com.linecorp.armeria.common.HttpRequest): HttpResponse {
         val sessions = ServiceRegistry.sessions
-
-        // Try cookie auth
         val cookieHeader = req.headers().get("cookie") ?: ""
-        val token = cookieHeader.split(";")
-            .map { it.trim() }
-            .firstOrNull { it.startsWith("${sessions.cookieName}=") }
-            ?.substringAfter("=")
+
+        fun extractCookie(name: String): String? =
+            cookieHeader.split(";").map { it.trim() }
+                .firstOrNull { it.startsWith("$name=") }?.substringAfter("=")
+
+        // Check impersonation cookie first (dual-cookie pattern)
+        val impToken = extractCookie(ImpersonationHttpService.IMPERSONATION_COOKIE)
+        val mainToken = extractCookie(sessions.cookieName)
+
+        if (impToken != null && mainToken != null) {
+            val impUser = impToken.let { sessions.validateToken(it) }?.let { AppUser.findById(it.id) }
+            val realAdmin = mainToken.let { sessions.validateToken(it) }?.let { AppUser.findById(it.id) }
+            if (impUser != null && realAdmin != null && realAdmin.isAdmin()) {
+                ctx.setAttr(USER_ATTR, impUser)
+                ctx.setAttr(REAL_ADMIN_ATTR, realAdmin)
+                return delegate.serve(ctx, req)
+            }
+        }
+
+        // Normal auth
+        val token = mainToken
 
         val authUser = token?.let { sessions.validateToken(it) }
         val user = authUser?.let { AppUser.findById(it.id) }
         if (user != null) {
             val path = ctx.path()
-            val allowedPaths = setOf("/api/auth/change-password", "/api/auth/logout", "/api/auth/accept-legal")
+            val allowedPaths = setOf("/api/v1/auth/change-password", "/api/v1/auth/logout", "/api/v1/auth/accept-legal")
 
             // Password change required — block everything except password change and logout
             if (user.must_change_password && path !in allowedPaths) {

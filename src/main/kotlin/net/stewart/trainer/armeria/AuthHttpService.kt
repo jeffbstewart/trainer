@@ -23,7 +23,7 @@ class AuthHttpService {
 
     private val gson = Gson()
 
-    @Get("/api/auth/discover")
+    @Get("/api/v1/auth/discover")
     fun discover(): HttpResponse {
         val setupRequired = !ServiceRegistry.userRepository.hasUsers()
         val result = mutableMapOf<String, Any>(
@@ -36,7 +36,7 @@ class AuthHttpService {
         return json(result)
     }
 
-    @Post("/api/auth/login")
+    @Post("/api/v1/auth/login")
     fun login(ctx: ServiceRequestContext): HttpResponse {
         val body = gson.fromJson(ctx.request().aggregate().join().contentUtf8(), Map::class.java)
         val username = body["username"] as? String ?: return badRequest("username required")
@@ -70,7 +70,7 @@ class AuthHttpService {
         }
     }
 
-    @Post("/api/auth/setup")
+    @Post("/api/v1/auth/setup")
     fun setup(ctx: ServiceRequestContext): HttpResponse {
         if (ServiceRegistry.userRepository.hasUsers()) {
             return json(mapOf("error" to "Setup already completed"), HttpStatus.FORBIDDEN)
@@ -119,7 +119,7 @@ class AuthHttpService {
             .build()
     }
 
-    @Post("/api/auth/logout")
+    @Post("/api/v1/auth/logout")
     fun logout(ctx: ServiceRequestContext): HttpResponse {
         val cookieHeader = ctx.request().headers().get("cookie") ?: ""
         val token = cookieHeader.split(";")
@@ -138,7 +138,7 @@ class AuthHttpService {
             .build()
     }
 
-    @Post("/api/auth/change-password")
+    @Post("/api/v1/auth/change-password")
     fun changePassword(ctx: ServiceRequestContext): HttpResponse {
         val (user, err) = AuthDecorator.requireUser(ctx)
         if (user == null) return err!!
@@ -166,7 +166,7 @@ class AuthHttpService {
         return json(mapOf("ok" to true))
     }
 
-    @Post("/api/auth/accept-legal")
+    @Post("/api/v1/auth/accept-legal")
     fun acceptLegal(ctx: ServiceRequestContext): HttpResponse {
         val (user, err) = AuthDecorator.requireUser(ctx)
         if (user == null) return err!!

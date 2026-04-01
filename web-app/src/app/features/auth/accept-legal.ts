@@ -91,7 +91,7 @@ export class AcceptLegalComponent implements OnInit {
     this.submitting.set(true);
     this.error.set('');
     try {
-      await firstValueFrom(this.http.post('/api/auth/accept-legal', {},
+      await firstValueFrom(this.http.post('/api/v1/auth/accept-legal', {},
         { headers: { 'X-Requested-With': 'XMLHttpRequest' } }));
       this.router.navigate(['/']);
     } catch {

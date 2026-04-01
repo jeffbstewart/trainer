@@ -13,14 +13,25 @@ class ProfileHttpService {
 
     private val gson = Gson()
 
-    @Get("/api/profile")
+    @Get("/api/v1/profile")
     fun profile(ctx: ServiceRequestContext): HttpResponse {
         val user = AuthDecorator.getUser(ctx) ?: return HttpResponse.of(HttpStatus.UNAUTHORIZED)
-        val profile = mapOf(
+        val realAdmin = AuthDecorator.getRealAdmin(ctx)
+        val profile = mutableMapOf<String, Any?>(
             "id" to user.id,
             "username" to user.username,
-            "is_admin" to user.isAdmin()
+            "access_level" to user.access_level,
+            "role" to when {
+                user.isAdmin() -> "Admin"
+                user.isManager() -> "Manager"
+                user.isTrainer() -> "Trainer"
+                else -> "Trainee"
+            },
+            "is_impersonating" to (realAdmin != null)
         )
+        if (realAdmin != null) {
+            profile["real_admin_username"] = realAdmin.username
+        }
         return HttpResponse.of(HttpStatus.OK, MediaType.JSON_UTF_8, gson.toJson(profile))
     }
 }
