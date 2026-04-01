@@ -11,7 +11,7 @@ echo ""
 echo "=== Building Angular frontend ==="
 cd web-app
 npm ci --silent
-npx ng build --base-href="/app/"
+MSYS_NO_PATHCONV=1 npx ng build --base-href="/app/"
 cd ..
 
 echo ""

@@ -13,6 +13,7 @@ data/
 # Secrets (allow example files)
 secrets/*
 !secrets/example.env
+!secrets/example.deploy.env
 
 # Node
 web-app/node_modules/
