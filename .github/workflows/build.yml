@@ -1,0 +1,53 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout trainer
+        uses: actions/checkout@v4
+
+      - name: Checkout h2-kotlin-toolkit
+        uses: actions/checkout@v4
+        with:
+          repository: jeffbstewart/h2-kotlin-toolkit
+          path: ../h2-kotlin-toolkit
+
+      - name: Checkout auth-kotlin-toolkit
+        uses: actions/checkout@v4
+        with:
+          repository: jeffbstewart/auth-kotlin-toolkit
+          path: ../auth-kotlin-toolkit
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: corretto
+          java-version: '21'
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web-app/package-lock.json
+
+      - name: Build Kotlin backend
+        run: ./gradlew build
+
+      - name: Build Angular frontend
+        working-directory: web-app
+        run: |
+          npm ci
+          npx ng build --base-href="/app/"
+
+      - name: Build Docker image
+        run: |
+          docker build -t trainer:ci .
