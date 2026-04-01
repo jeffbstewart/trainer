@@ -12,6 +12,7 @@ import com.linecorp.armeria.server.annotation.Post
 import net.stewart.auth.LoginResult
 import net.stewart.auth.PasswordService
 import net.stewart.auth.SessionService
+import net.stewart.trainer.entity.AppConfig
 import net.stewart.trainer.entity.AppUser
 import net.stewart.trainer.service.ServiceRegistry
 import java.time.LocalDateTime
@@ -24,7 +25,13 @@ class AuthHttpService {
     @Get("/api/auth/discover")
     fun discover(): HttpResponse {
         val setupRequired = !ServiceRegistry.userRepository.hasUsers()
-        return json(mapOf("setup_required" to setupRequired))
+        val configs = AppConfig.findAll()
+        val result = mutableMapOf<String, Any>(
+            "setup_required" to setupRequired
+        )
+        configs.firstOrNull { it.config_key == "terms_of_use_url" }?.let { result["terms_of_use_url"] = it.config_val }
+        configs.firstOrNull { it.config_key == "privacy_policy_url" }?.let { result["privacy_policy_url"] = it.config_val }
+        return json(result)
     }
 
     @Post("/api/auth/login")
@@ -82,6 +89,16 @@ class AuthHttpService {
             updated_at = now
         )
         user.save()
+
+        // Store legal document URLs in app_config
+        val termsUrl = (body["terms_of_use_url"] as? String)?.trim()
+        val privacyUrl = (body["privacy_policy_url"] as? String)?.trim()
+        if (!termsUrl.isNullOrBlank()) {
+            AppConfig(config_key = "terms_of_use_url", config_val = termsUrl).save()
+        }
+        if (!privacyUrl.isNullOrBlank()) {
+            AppConfig(config_key = "privacy_policy_url", config_val = privacyUrl).save()
+        }
 
         val ua = ctx.request().headers().get("user-agent") ?: "unknown"
         val token = ServiceRegistry.sessions.createSession(user.toAuthUser(), ua)

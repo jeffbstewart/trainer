@@ -39,11 +39,18 @@ import { AuthService } from '../../core/auth.service';
             <p class="mismatch">Passwords do not match</p>
           }
 
-          <p class="legal-links">
-            By creating an account you agree to the
-            <a href="https://example.com/terms" target="_blank">Terms of Use</a> and
-            <a href="https://example.com/privacy" target="_blank">Privacy Policy</a>.
-          </p>
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Terms of Use URL</mat-label>
+            <input matInput type="url" [value]="termsUrl()" (input)="termsUrl.set($any($event.target).value)"
+                   placeholder="https://example.com/terms" />
+            <mat-hint>Shown to users at login</mat-hint>
+          </mat-form-field>
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Privacy Policy URL</mat-label>
+            <input matInput type="url" [value]="privacyUrl()" (input)="privacyUrl.set($any($event.target).value)"
+                   placeholder="https://example.com/privacy" />
+            <mat-hint>Shown to users at login</mat-hint>
+          </mat-form-field>
 
           <button mat-flat-button color="primary" class="full-width" (click)="onSubmit()"
                   [disabled]="!isValid()">
@@ -71,6 +78,8 @@ export class SetupComponent {
   readonly username = signal('');
   readonly password = signal('');
   readonly confirm = signal('');
+  readonly termsUrl = signal('');
+  readonly privacyUrl = signal('');
   readonly error = signal('');
 
   isValid(): boolean {
@@ -83,7 +92,7 @@ export class SetupComponent {
     if (!this.isValid()) return;
     this.error.set('');
     try {
-      await this.auth.setup(this.username().trim(), this.password());
+      await this.auth.setup(this.username().trim(), this.password(), this.termsUrl().trim(), this.privacyUrl().trim());
       this.router.navigate(['/']);
     } catch (e: unknown) {
       this.error.set((e as { error?: { error?: string } })?.error?.error ?? 'Setup failed');

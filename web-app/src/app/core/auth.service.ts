@@ -25,9 +25,13 @@ export class AuthService {
     return response;
   }
 
-  async setup(username: string, password: string): Promise<{ ok: boolean }> {
+  async setup(username: string, password: string, termsUrl: string, privacyUrl: string): Promise<{ ok: boolean }> {
     const response = await firstValueFrom(
-      this.http.post<{ ok: boolean }>('/api/auth/setup', { username, password })
+      this.http.post<{ ok: boolean }>('/api/auth/setup', {
+        username, password,
+        terms_of_use_url: termsUrl || undefined,
+        privacy_policy_url: privacyUrl || undefined,
+      })
     );
     if (response.ok) this.authenticated.set(true);
     return response;
