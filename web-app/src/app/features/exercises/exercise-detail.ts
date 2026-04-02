@@ -174,8 +174,11 @@ export class ExerciseDetailComponent implements OnInit {
   private exerciseId = 0;
 
   async ngOnInit(): Promise<void> {
-    this.exerciseId = Number(this.route.snapshot.paramMap.get('exerciseId'));
-    await this.refresh();
+    this.route.paramMap.subscribe(async params => {
+      this.exerciseId = Number(params.get('exerciseId'));
+      this.exercise.set(null);
+      await this.refresh();
+    });
   }
 
   difficultyLabel(d: string): string {

@@ -258,8 +258,11 @@ export class ProgramDetailComponent implements OnInit {
   readonly selectedExerciseId = signal<number | null>(null);
 
   async ngOnInit(): Promise<void> {
-    this.programId = Number(this.route.snapshot.paramMap.get('programId'));
-    await this.refresh();
+    this.route.paramMap.subscribe(async params => {
+      this.programId = Number(params.get('programId'));
+      this.program.set(null);
+      await this.refresh();
+    });
   }
 
   async refresh(): Promise<void> {

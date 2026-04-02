@@ -81,20 +81,24 @@ export class EquipmentDetailComponent implements OnInit {
   readonly exercises = signal<ExerciseForEquipment[]>([]);
 
   async ngOnInit(): Promise<void> {
-    const id = Number(this.route.snapshot.paramMap.get('equipmentId'));
-    try {
-      const [equipData, exerciseData] = await Promise.all([
-        firstValueFrom(this.http.get<{ equipment: { id: number; name: string }[] }>('/api/v1/equipment')),
-        firstValueFrom(this.http.get<{ exercises: { id: number; name: string; difficulty: string; targets: Ref[]; equipment: Ref[] }[] }>('/api/v1/exercises')),
-      ]);
-      const equip = equipData.equipment.find(e => e.id === id);
-      if (equip) this.equipName.set(equip.name);
+    this.route.paramMap.subscribe(async params => {
+      const id = Number(params.get('equipmentId'));
+      this.equipName.set('');
+      this.exercises.set([]);
+      try {
+        const [equipData, exerciseData] = await Promise.all([
+          firstValueFrom(this.http.get<{ equipment: { id: number; name: string }[] }>('/api/v1/equipment')),
+          firstValueFrom(this.http.get<{ exercises: { id: number; name: string; difficulty: string; targets: Ref[]; equipment: Ref[] }[] }>('/api/v1/exercises')),
+        ]);
+        const equip = equipData.equipment.find(e => e.id === id);
+        if (equip) this.equipName.set(equip.name);
 
-      const matching = exerciseData.exercises
-        .filter(ex => ex.equipment.some(e => e.id === id))
-        .sort((a, b) => a.name.localeCompare(b.name));
-      this.exercises.set(matching);
-    } catch { /* ignore */ }
+        const matching = exerciseData.exercises
+          .filter(ex => ex.equipment.some(e => e.id === id))
+          .sort((a, b) => a.name.localeCompare(b.name));
+        this.exercises.set(matching);
+      } catch { /* ignore */ }
+    });
   }
 
   difficultyLabel(d: string): string {

@@ -207,17 +207,23 @@ export class UserDetailComponent implements OnInit {
   private userId = 0;
 
   async ngOnInit(): Promise<void> {
-    this.userId = Number(this.route.snapshot.paramMap.get('userId'));
-    try {
-      const [profile, userDetail, sessionsData] = await Promise.all([
-        firstValueFrom(this.http.get<ProfileInfo>('/api/v1/profile')),
-        firstValueFrom(this.http.get<UserDetail>(`/api/v1/users/${this.userId}`)),
-        firstValueFrom(this.http.get<{ sessions: Session[] }>(`/api/v1/users/${this.userId}/sessions`)),
-      ]);
-      this.myProfile.set(profile);
-      this.user.set(userDetail);
-      this.sessions.set(sessionsData.sessions);
-    } catch { /* ignore */ }
+    this.route.paramMap.subscribe(async params => {
+      this.userId = Number(params.get('userId'));
+      this.user.set(null);
+      this.sessions.set([]);
+      this.tempPassword.set('');
+      this.actionError.set('');
+      try {
+        const [profile, userDetail, sessionsData] = await Promise.all([
+          firstValueFrom(this.http.get<ProfileInfo>('/api/v1/profile')),
+          firstValueFrom(this.http.get<UserDetail>(`/api/v1/users/${this.userId}`)),
+          firstValueFrom(this.http.get<{ sessions: Session[] }>(`/api/v1/users/${this.userId}/sessions`)),
+        ]);
+        this.myProfile.set(profile);
+        this.user.set(userDetail);
+        this.sessions.set(sessionsData.sessions);
+      } catch { /* ignore */ }
+    });
   }
 
   async resetPassword(): Promise<void> {

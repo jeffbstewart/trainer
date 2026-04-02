@@ -92,20 +92,23 @@ export class TargetDetailComponent implements OnInit {
   readonly exercises = signal<ExerciseForTarget[]>([]);
 
   async ngOnInit(): Promise<void> {
-    const id = Number(this.route.snapshot.paramMap.get('targetId'));
-    try {
-      // Load all exercises and filter by target
-      const [targets, exerciseData] = await Promise.all([
-        firstValueFrom(this.http.get<{ targets: TargetDetail[] }>('/api/v1/targets')),
-        firstValueFrom(this.http.get<{ exercises: { id: number; name: string; difficulty: string; targets: Ref[]; equipment: Ref[] }[] }>('/api/v1/exercises')),
-      ]);
-      this.target.set(targets.targets.find(t => t.id === id) ?? null);
+    this.route.paramMap.subscribe(async params => {
+      const id = Number(params.get('targetId'));
+      this.target.set(null);
+      this.exercises.set([]);
+      try {
+        const [targets, exerciseData] = await Promise.all([
+          firstValueFrom(this.http.get<{ targets: TargetDetail[] }>('/api/v1/targets')),
+          firstValueFrom(this.http.get<{ exercises: { id: number; name: string; difficulty: string; targets: Ref[]; equipment: Ref[] }[] }>('/api/v1/exercises')),
+        ]);
+        this.target.set(targets.targets.find(t => t.id === id) ?? null);
 
       const matching = exerciseData.exercises
         .filter(ex => ex.targets.some(t => t.id === id))
         .sort((a, b) => a.name.localeCompare(b.name));
       this.exercises.set(matching);
-    } catch { /* ignore */ }
+      } catch { /* ignore */ }
+    });
   }
 
   exercisesByDifficulty(level: string): ExerciseForTarget[] {
