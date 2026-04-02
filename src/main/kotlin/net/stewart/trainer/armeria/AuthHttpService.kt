@@ -90,7 +90,7 @@ class AuthHttpService {
         val user = AppUser(
             username = username,
             password_hash = PasswordService.hash(password),
-            access_level = 4, // first user is admin
+            access_level = net.stewart.trainer.entity.Role.ADMIN,
             created_at = now,
             updated_at = now
         )

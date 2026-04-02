@@ -2,6 +2,7 @@ import { Component, inject, signal, OnInit, ChangeDetectionStrategy } from '@ang
 import { HttpClient } from '@angular/common/http';
 import { RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
+import { Role } from '../../core/roles';
 import { MatTableModule } from '@angular/material/table';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -137,7 +138,7 @@ export class ProgramsComponent implements OnInit {
         firstValueFrom(this.http.get<{ users: { id: number; username: string; access_level: number }[] }>('/api/v1/users')),
       ]);
       this.programs.set(programs.programs);
-      this.trainees.set(users.users.filter(u => u.access_level === 1));
+      this.trainees.set(users.users.filter(u => u.access_level === Role.TRAINEE));
     } catch { /* ignore */ }
   }
 

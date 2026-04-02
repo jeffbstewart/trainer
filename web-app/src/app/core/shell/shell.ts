@@ -9,6 +9,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatMenuModule } from '@angular/material/menu';
 import { AuthService } from '../auth.service';
+import { Role } from '../roles';
 
 @Component({
   selector: 'app-shell',
@@ -31,7 +32,7 @@ import { AuthService } from '../auth.service';
             <span matListItemTitle>Home</span>
           </a>
 
-          @if (accessLevel() >= 2) {
+          @if (accessLevel() >= Role.TRAINER) {
             <div class="nav-section">CLIENTS</div>
             <a mat-list-item routerLink="/programs" routerLinkActive="active-link" (click)="drawer.close()">
               <mat-icon matListItemIcon>calendar_month</mat-icon>
@@ -115,6 +116,7 @@ import { AuthService } from '../auth.service';
   `,
 })
 export class ShellComponent implements OnInit {
+  readonly Role = Role;
   private readonly auth = inject(AuthService);
   private readonly http = inject(HttpClient);
   private readonly router = inject(Router);

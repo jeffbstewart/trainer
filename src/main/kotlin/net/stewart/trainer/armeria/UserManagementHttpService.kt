@@ -12,6 +12,7 @@ import com.linecorp.armeria.server.annotation.Get
 import com.linecorp.armeria.server.annotation.Param
 import com.linecorp.armeria.server.annotation.Post
 import net.stewart.auth.PasswordService
+import net.stewart.trainer.entity.Role
 import net.stewart.trainer.entity.AppUser
 import net.stewart.trainer.service.ServiceRegistry
 import net.stewart.trainer.service.TempPasswordGenerator
@@ -32,24 +33,66 @@ class UserManagementHttpService {
         val allUsers = AppUser.findAll()
         val visible = when {
             user.isAdmin() -> allUsers
-            user.isManager() -> allUsers.filter { it.access_level < 4 } // managers see everyone except admins
+            user.isManager() -> allUsers.filter { it.access_level < Role.ADMIN } // managers see everyone except admins
             user.isTrainer() -> allUsers.filter { it.trainer_id == user.id } // trainers see only their trainees
             else -> emptyList()
         }
 
+        val allUsersById = allUsers.associateBy { it.id }
+
         val rows = visible.sortedBy { it.username.lowercase() }.map { u ->
+            val trainer = u.trainer_id?.let { allUsersById[it] }
             mapOf(
                 "id" to u.id,
                 "username" to u.username,
                 "access_level" to u.access_level,
                 "role" to roleName(u.access_level),
                 "trainer_id" to u.trainer_id,
+                "trainer_name" to trainer?.username,
                 "locked" to u.locked,
                 "must_change_password" to u.must_change_password,
                 "created_at" to u.created_at?.toString()
             )
         }
         return json(mapOf("users" to rows))
+    }
+
+    /** Get user detail with trainer info and trainee list (for trainers). */
+    @Get("/api/v1/users/{userId}")
+    fun getUser(ctx: ServiceRequestContext, @Param("userId") userId: Long): HttpResponse {
+        val (actor, err) = AuthDecorator.requireUser(ctx)
+        if (actor == null) return err!!
+
+        val target = AppUser.findById(userId) ?: return HttpResponse.of(HttpStatus.NOT_FOUND)
+
+        // Trainees can only see themselves
+        if (!actor.isTrainer() && actor.id != userId) return HttpResponse.of(HttpStatus.FORBIDDEN)
+        // Trainers can see their trainees
+        if (actor.isTrainer() && !actor.isManager() && actor.id != userId && target.trainer_id != actor.id) {
+            return HttpResponse.of(HttpStatus.FORBIDDEN)
+        }
+
+        val trainer = target.trainer_id?.let { AppUser.findById(it) }
+        val trainees = if (target.isTrainer()) {
+            AppUser.findAll()
+                .filter { it.trainer_id == target.id }
+                .sortedBy { it.username.lowercase() }
+                .map { mapOf("id" to it.id, "username" to it.username) }
+        } else emptyList()
+
+        val result = mapOf(
+            "id" to target.id,
+            "username" to target.username,
+            "access_level" to target.access_level,
+            "role" to roleName(target.access_level),
+            "trainer_id" to target.trainer_id,
+            "trainer_name" to trainer?.username,
+            "trainees" to trainees,
+            "locked" to target.locked,
+            "must_change_password" to target.must_change_password,
+            "created_at" to target.created_at?.toString()
+        )
+        return json(result)
     }
 
     /** Create a new user. Role-gated: trainers create trainees, managers create trainers, admins create anyone. */
@@ -85,7 +128,16 @@ class UserManagementHttpService {
             password_hash = PasswordService.hash(tempPassword),
             access_level = accessLevel,
             must_change_password = true,
-            trainer_id = if (accessLevel == 1) creator.id else null, // trainees assigned to creating trainer
+            trainer_id = if (accessLevel == Role.TRAINEE) {
+                // Managers/admins can specify a trainer; trainers assign to themselves
+                val requestedTrainer = (body["trainer_id"] as? Number)?.toLong()
+                if (creator.isManager() && requestedTrainer != null) {
+                    val trainer = AppUser.findById(requestedTrainer)
+                    if (trainer != null && trainer.isTrainer()) requestedTrainer else creator.id!!
+                } else {
+                    creator.id!!
+                }
+            } else null,
             created_by = creator.id,
             created_at = now,
             updated_at = now
@@ -130,7 +182,7 @@ class UserManagementHttpService {
         val newTrainerId = (body["trainer_id"] as? Number)?.toLong() ?: return badRequest("trainer_id required")
 
         val trainee = AppUser.findById(userId) ?: return HttpResponse.of(HttpStatus.NOT_FOUND)
-        if (trainee.access_level != 1) return badRequest("Only trainees can be reassigned")
+        if (trainee.access_level != Role.TRAINEE) return badRequest("Only trainees can be reassigned")
 
         val newTrainer = AppUser.findById(newTrainerId)
         if (newTrainer == null || !newTrainer.isTrainer()) return badRequest("Target must be a trainer")

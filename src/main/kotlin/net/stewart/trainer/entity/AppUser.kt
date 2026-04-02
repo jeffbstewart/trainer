@@ -25,9 +25,9 @@ data class AppUser(
 ) : KEntity<Long> {
     companion object : Dao<AppUser, Long>(AppUser::class.java)
 
-    fun isAdmin(): Boolean = access_level >= 4
-    fun isManager(): Boolean = access_level >= 3
-    fun isTrainer(): Boolean = access_level >= 2
+    fun isAdmin(): Boolean = access_level >= Role.ADMIN
+    fun isManager(): Boolean = access_level >= Role.MANAGER
+    fun isTrainer(): Boolean = access_level >= Role.TRAINER
 
     fun toAuthUser(): AuthUser = object : AuthUser {
         override val id: Long get() = this@AppUser.id!!

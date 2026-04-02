@@ -1,14 +1,18 @@
 import { Component, inject, signal, OnInit, ChangeDetectionStrategy } from '@angular/core';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { Role } from '../../core/roles';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatCardModule } from '@angular/material/card';
 
+interface TraineeRef { id: number; username: string; }
+
 interface UserDetail {
   id: number; username: string; role: string; access_level: number;
   locked: boolean; must_change_password: boolean; trainer_id: number | null;
+  trainer_name: string | null; trainees: TraineeRef[];
   created_at: string | null;
 }
 
@@ -23,7 +27,7 @@ interface ProfileInfo {
 @Component({
   selector: 'app-user-detail',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [MatButtonModule, MatIconModule, MatCardModule],
+  imports: [RouterLink, MatButtonModule, MatIconModule, MatCardModule],
   template: `
     @if (user(); as u) {
       <h2>{{ u.username }}</h2>
@@ -36,16 +40,38 @@ interface ProfileInfo {
             @if (!u.locked && !u.must_change_password) { Active }
           </span>
         </div>
+        @if (u.trainer_name) {
+          <div class="info-row"><span class="label">Trainer</span>
+            @if (myProfile()?.access_level && myProfile()!.access_level >= Role.TRAINER) {
+              <a [routerLink]="['/users', u.trainer_id]">{{ u.trainer_name }}</a>
+            } @else {
+              <span>{{ u.trainer_name }}</span>
+            }
+          </div>
+        }
         @if (u.created_at) {
           <div class="info-row"><span class="label">Created</span><span>{{ u.created_at }}</span></div>
         }
       </div>
 
+      <!-- Trainees (for trainers) -->
+      @if (u.trainees.length > 0) {
+        <h3>Clients</h3>
+        <div class="trainee-list">
+          @for (t of u.trainees; track t.id) {
+            <a class="trainee-card" [routerLink]="['/users', t.id]">
+              <mat-icon>person</mat-icon>
+              <span>{{ t.username }}</span>
+            </a>
+          }
+        </div>
+      }
+
       <div class="action-row">
         <button mat-flat-button color="primary" (click)="resetPassword()">
           <mat-icon>lock_reset</mat-icon> Reset Password
         </button>
-        @if (myProfile()?.access_level === 4 && u.access_level < 4) {
+        @if (myProfile()?.access_level === Role.ADMIN && u.access_level < Role.ADMIN) {
           <button mat-stroked-button (click)="impersonate()">
             <mat-icon>supervisor_account</mat-icon> Impersonate
           </button>
@@ -90,6 +116,15 @@ interface ProfileInfo {
       &.locked { background: rgba(244,67,54,0.2); color: #f44336; }
       &.pw { background: rgba(255,165,0,0.2); color: #ffa500; }
     }
+    .info-row a { color: var(--mat-sys-primary, #005cbb); text-decoration: none; }
+    .info-row a:hover { text-decoration: underline; }
+    .trainee-list { display: flex; flex-direction: column; gap: 0.25rem; }
+    .trainee-card {
+      display: flex; align-items: center; gap: 0.5rem; padding: 8px 12px;
+      border-radius: 8px; text-decoration: none; color: inherit;
+      background: var(--mat-sys-surface-container, #efedf0);
+      &:hover { background: var(--mat-sys-surface-container-high, #e9e7eb); }
+    }
     .action-row { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
     .error-text { color: #f44336; font-size: 0.8125rem; margin-top: 0.5rem; }
     .temp-pw-box {
@@ -109,6 +144,7 @@ interface ProfileInfo {
   `,
 })
 export class UserDetailComponent implements OnInit {
+  readonly Role = Role;
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly http = inject(HttpClient);
@@ -123,14 +159,16 @@ export class UserDetailComponent implements OnInit {
 
   async ngOnInit(): Promise<void> {
     this.userId = Number(this.route.snapshot.paramMap.get('userId'));
-    const [profile, users, sessionsData] = await Promise.all([
-      firstValueFrom(this.http.get<ProfileInfo>('/api/v1/profile')),
-      firstValueFrom(this.http.get<{ users: UserDetail[] }>('/api/v1/users')),
-      firstValueFrom(this.http.get<{ sessions: Session[] }>(`/api/v1/users/${this.userId}/sessions`)),
-    ]);
-    this.myProfile.set(profile);
-    this.user.set(users.users.find(u => u.id === this.userId) ?? null);
-    this.sessions.set(sessionsData.sessions);
+    try {
+      const [profile, userDetail, sessionsData] = await Promise.all([
+        firstValueFrom(this.http.get<ProfileInfo>('/api/v1/profile')),
+        firstValueFrom(this.http.get<UserDetail>(`/api/v1/users/${this.userId}`)),
+        firstValueFrom(this.http.get<{ sessions: Session[] }>(`/api/v1/users/${this.userId}/sessions`)),
+      ]);
+      this.myProfile.set(profile);
+      this.user.set(userDetail);
+      this.sessions.set(sessionsData.sessions);
+    } catch { /* ignore */ }
   }
 
   async resetPassword(): Promise<void> {

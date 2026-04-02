@@ -2,6 +2,7 @@ import { Component, inject, signal, viewChild, OnInit, AfterViewInit, ChangeDete
 import { HttpClient } from '@angular/common/http';
 import { RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
+import { Role } from '../../core/roles';
 import { MatTableModule, MatTableDataSource } from '@angular/material/table';
 import { MatSortModule, MatSort } from '@angular/material/sort';
 import { MatPaginatorModule, MatPaginator } from '@angular/material/paginator';
@@ -76,6 +77,16 @@ interface UserRow {
               <mat-option [value]="3">Manager</mat-option>
             </mat-select>
           </mat-form-field>
+          @if (createRole() === Role.TRAINEE && myAccessLevel() >= Role.MANAGER) {
+            <mat-form-field appearance="outline" class="full-width">
+              <mat-label>Assign to Trainer</mat-label>
+              <mat-select (selectionChange)="createTrainerId.set($event.value)">
+                @for (t of trainers(); track t.id) {
+                  <mat-option [value]="t.id">{{ t.username }}</mat-option>
+                }
+              </mat-select>
+            </mat-form-field>
+          }
           @if (tempPassword()) {
             <div class="temp-pw-box">
               <p>Temporary password (shown once):</p>
@@ -119,6 +130,7 @@ interface UserRow {
 })
 export class UsersComponent implements OnInit, AfterViewInit {
   private readonly http = inject(HttpClient);
+  readonly Role = Role;
 
   readonly sort = viewChild(MatSort);
   readonly paginator = viewChild(MatPaginator);
@@ -126,9 +138,13 @@ export class UsersComponent implements OnInit, AfterViewInit {
   readonly dataSource = new MatTableDataSource<UserRow>([]);
   readonly columns = ['username', 'role', 'actions'];
 
+  readonly myAccessLevel = signal(0);
+  readonly trainers = signal<{ id: number; username: string }[]>([]);
+
   readonly showCreate = signal(false);
   readonly createUsername = signal('');
   readonly createRole = signal(1);
+  readonly createTrainerId = signal<number | null>(null);
   readonly createError = signal('');
   readonly tempPassword = signal('');
 
@@ -150,8 +166,13 @@ export class UsersComponent implements OnInit, AfterViewInit {
 
   async refresh(): Promise<void> {
     try {
-      const d = await firstValueFrom(this.http.get<{ users: UserRow[] }>('/api/v1/users'));
+      const [d, profile] = await Promise.all([
+        firstValueFrom(this.http.get<{ users: UserRow[] }>('/api/v1/users')),
+        firstValueFrom(this.http.get<{ access_level: number }>('/api/v1/profile')),
+      ]);
       this.dataSource.data = d.users;
+      this.myAccessLevel.set(profile.access_level);
+      this.trainers.set(d.users.filter(u => u.access_level >= Role.TRAINER && u.access_level < Role.ADMIN));
     } catch { /* ignore */ }
   }
 
@@ -161,7 +182,8 @@ export class UsersComponent implements OnInit, AfterViewInit {
 
   openCreate(): void {
     this.createUsername.set('');
-    this.createRole.set(1);
+    this.createRole.set(Role.TRAINEE);
+    this.createTrainerId.set(null);
     this.createError.set('');
     this.tempPassword.set('');
     this.showCreate.set(true);
@@ -175,8 +197,12 @@ export class UsersComponent implements OnInit, AfterViewInit {
   async submitCreate(): Promise<void> {
     this.createError.set('');
     try {
+      const body: Record<string, unknown> = { username: this.createUsername().trim(), access_level: this.createRole() };
+      if (this.createRole() === Role.TRAINEE && this.createTrainerId()) {
+        body['trainer_id'] = this.createTrainerId();
+      }
       const r = await firstValueFrom(this.http.post<{ ok?: boolean; temporary_password?: string; error?: string }>(
-        '/api/v1/users', { username: this.createUsername().trim(), access_level: this.createRole() }));
+        '/api/v1/users', body));
       if (r.temporary_password) {
         this.tempPassword.set(r.temporary_password);
       } else {
