@@ -88,8 +88,8 @@ interface AvailableExercise { id: number; name: string; }
                       </td>
                       @for (session of workout.sessions; track session.id) {
                         @for (r of roundRange(maxRounds(session)); track r) {
-                          <td class="set-cell">
-                            {{ formatSet(session, exercise.id, r) }}
+                          <td class="set-cell" (click)="openSetEdit(session, exercise, r)">
+                            {{ formatSet(session, exercise.id, r) || '—' }}
                           </td>
                         }
                       }
@@ -156,6 +156,34 @@ interface AvailableExercise { id: number; name: string; }
         </div>
       </div>
     }
+
+    <!-- Record Set Dialog -->
+    @if (showSetEdit()) {
+      <div class="modal-overlay" (click)="showSetEdit.set(false)">
+        <div class="modal-content set-edit-dialog" (click)="$event.stopPropagation()">
+          <h3>{{ setEditExerciseName() }} — Round {{ setEditRound() }}</h3>
+          <span class="set-edit-date">{{ setEditDate() }}</span>
+          <div class="set-edit-fields">
+            <mat-form-field appearance="outline" class="set-field">
+              <mat-label>Weight</mat-label>
+              <input matInput type="number" inputmode="decimal" step="0.5"
+                     [value]="setEditWeight()" (input)="setEditWeight.set($any($event.target).value)" />
+              <span matTextSuffix>lbs</span>
+            </mat-form-field>
+            <mat-form-field appearance="outline" class="set-field">
+              <mat-label>Reps</mat-label>
+              <input matInput type="number" inputmode="numeric"
+                     [value]="setEditReps()" (input)="setEditReps.set($any($event.target).value)"
+                     (keydown.enter)="submitSetEdit()" />
+            </mat-form-field>
+          </div>
+          <div class="modal-actions">
+            <button mat-stroked-button (click)="showSetEdit.set(false)">Cancel</button>
+            <button mat-flat-button color="primary" (click)="submitSetEdit()">Save</button>
+          </div>
+        </div>
+      </div>
+    }
   `,
   styles: `
     h2 { margin: 0; }
@@ -181,7 +209,15 @@ interface AvailableExercise { id: number; name: string; }
     }
     .session-header { font-size: 0.6875rem; }
     .round-header { font-size: 0.625rem; opacity: 0.5; }
-    .set-cell { font-size: 0.75rem; white-space: nowrap; min-width: 60px; }
+    .set-cell {
+      font-size: 0.75rem; white-space: nowrap; min-width: 60px; cursor: pointer;
+      &:hover { background: var(--mat-sys-primary-container, #d7e3ff); }
+      &:active { background: var(--mat-sys-primary, #005cbb); color: white; }
+    }
+    .set-edit-dialog { max-width: 320px; }
+    .set-edit-date { font-size: 0.8125rem; opacity: 0.5; display: block; margin-bottom: 0.75rem; }
+    .set-edit-fields { display: flex; gap: 0.75rem; }
+    .set-field { flex: 1; }
 
     .empty-text { opacity: 0.5; font-size: 0.875rem; }
     .full-width { width: 100%; }
@@ -203,6 +239,16 @@ export class ProgramDetailComponent implements OnInit {
   readonly showAddWorkout = signal(false);
   readonly newWorkoutName = signal('');
   readonly newWorkoutType = signal('UPPER');
+
+  // Set edit dialog
+  readonly showSetEdit = signal(false);
+  readonly setEditSessionId = signal(0);
+  readonly setEditExerciseId = signal(0);
+  readonly setEditExerciseName = signal('');
+  readonly setEditRound = signal(0);
+  readonly setEditDate = signal('');
+  readonly setEditWeight = signal('');
+  readonly setEditReps = signal('');
 
   // Add exercise dialog
   readonly showAddExercise = signal(false);
@@ -289,6 +335,38 @@ export class ProgramDetailComponent implements OnInit {
     await firstValueFrom(this.http.post(
       `/api/v1/programs/${this.programId}/workouts/${workout.id}/sessions`, {}
     ));
+    await this.refresh();
+  }
+
+  openSetEdit(session: SessionData, exercise: ExerciseRef, round: number): void {
+    this.setEditSessionId.set(session.id);
+    this.setEditExerciseId.set(exercise.id);
+    this.setEditExerciseName.set(exercise.name);
+    this.setEditRound.set(round);
+    this.setEditDate.set(session.session_date ?? 'New session');
+
+    // Pre-fill with existing data if any
+    const ex = session.exercises.find(e => e.exercise_id === exercise.id);
+    const set = ex?.sets.find(s => s.round_number === round);
+    this.setEditWeight.set(set?.weight?.toString() ?? '');
+    this.setEditReps.set(set?.reps?.toString() ?? '');
+
+    this.showSetEdit.set(true);
+  }
+
+  async submitSetEdit(): Promise<void> {
+    const weight = parseFloat(this.setEditWeight());
+    const reps = parseInt(this.setEditReps(), 10);
+
+    await firstValueFrom(this.http.post(
+      `/api/v1/sessions/${this.setEditSessionId()}/exercises/${this.setEditExerciseId()}/sets`,
+      {
+        round_number: this.setEditRound(),
+        weight: isNaN(weight) ? null : weight,
+        reps: isNaN(reps) ? null : reps,
+      }
+    ));
+    this.showSetEdit.set(false);
     await this.refresh();
   }
 }
