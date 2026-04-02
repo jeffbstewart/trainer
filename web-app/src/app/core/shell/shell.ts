@@ -32,7 +32,13 @@ import { AuthService } from '../auth.service';
           </a>
 
           @if (accessLevel() >= 2) {
-            <div class="nav-section">TRAINING</div>
+            <div class="nav-section">CLIENTS</div>
+            <a mat-list-item routerLink="/programs" routerLinkActive="active-link" (click)="drawer.close()">
+              <mat-icon matListItemIcon>calendar_month</mat-icon>
+              <span matListItemTitle>Programs</span>
+            </a>
+
+            <div class="nav-section">LIBRARY</div>
             <a mat-list-item routerLink="/targets" routerLinkActive="active-link" (click)="drawer.close()">
               <mat-icon matListItemIcon>fitness_center</mat-icon>
               <span matListItemTitle>Targets</span>

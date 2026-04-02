@@ -32,6 +32,8 @@ export const routes: Routes = [
       { path: 'exercises/:exerciseId', loadComponent: () => import('./features/exercises/exercise-detail').then(m => m.ExerciseDetailComponent) },
       { path: 'equipment', loadComponent: () => import('./features/equipment/equipment').then(m => m.EquipmentComponent) },
       { path: 'equipment/:equipmentId', loadComponent: () => import('./features/equipment/equipment-detail').then(m => m.EquipmentDetailComponent) },
+      { path: 'programs', loadComponent: () => import('./features/programs/programs').then(m => m.ProgramsComponent) },
+      { path: 'programs/:programId', loadComponent: () => import('./features/programs/program-detail').then(m => m.ProgramDetailComponent) },
     ],
   },
 ];
