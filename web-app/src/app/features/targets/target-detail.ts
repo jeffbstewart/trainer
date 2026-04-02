@@ -41,7 +41,7 @@ interface TargetDetail {
                   @if (ex.equipment.length > 0) {
                     <div class="equip-row">
                       @for (e of ex.equipment; track e.id) {
-                        <span class="equip-chip">{{ e.name }}</span>
+                        <a class="equip-chip" [routerLink]="['/equipment', e.id]">{{ e.name }}</a>
                       }
                     </div>
                   }
@@ -77,8 +77,9 @@ interface TargetDetail {
     .exercise-name { font-weight: 500; }
     .equip-row { display: flex; flex-wrap: wrap; gap: 4px; }
     .equip-chip {
-      font-size: 0.6875rem; padding: 2px 8px; border-radius: 9999px;
+      font-size: 0.6875rem; padding: 2px 8px; border-radius: 9999px; text-decoration: none;
       background: var(--mat-sys-secondary-container, #dae2f9); color: var(--mat-sys-on-secondary-container, #3e4759);
+      &:hover { filter: brightness(0.95); }
     }
     .empty-text { opacity: 0.5; }
   `,

@@ -49,7 +49,7 @@ interface ExerciseRow {
         <td mat-cell *matCellDef="let ex">
           <div class="target-chips">
             @for (t of ex.targets; track t.id) {
-              <span class="target-chip">{{ t.name }}</span>
+              <a class="target-chip" [routerLink]="['/targets', t.id]">{{ t.name }}</a>
             }
           </div>
         </td>
@@ -59,7 +59,7 @@ interface ExerciseRow {
         <td mat-cell *matCellDef="let ex">
           <div class="equip-chips">
             @for (e of ex.equipment; track e.id) {
-              <span class="equip-chip">{{ e.name }}</span>
+              <a class="equip-chip" [routerLink]="['/equipment', e.id]">{{ e.name }}</a>
             }
           </div>
         </td>
@@ -121,13 +121,15 @@ interface ExerciseRow {
     .exercise-table a:hover { text-decoration: underline; }
     .target-chips { display: flex; flex-wrap: wrap; gap: 4px; }
     .target-chip {
-      font-size: 0.6875rem; padding: 2px 8px; border-radius: 9999px;
+      font-size: 0.6875rem; padding: 2px 8px; border-radius: 9999px; text-decoration: none;
       background: var(--mat-sys-primary-container, #d7e3ff); color: var(--mat-sys-on-primary-container, #00458f);
+      &:hover { filter: brightness(0.95); }
     }
     .equip-chips { display: flex; flex-wrap: wrap; gap: 4px; }
     .equip-chip {
-      font-size: 0.6875rem; padding: 2px 8px; border-radius: 9999px;
+      font-size: 0.6875rem; padding: 2px 8px; border-radius: 9999px; text-decoration: none;
       background: var(--mat-sys-secondary-container, #dae2f9); color: var(--mat-sys-on-secondary-container, #3e4759);
+      &:hover { filter: brightness(0.95); }
     }
     .difficulty-badge {
       font-size: 0.6875rem; font-weight: 600; padding: 2px 8px; border-radius: 4px;
