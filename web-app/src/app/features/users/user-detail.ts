@@ -6,6 +6,8 @@ import { firstValueFrom } from 'rxjs';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatCardModule } from '@angular/material/card';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatSelectModule } from '@angular/material/select';
 
 interface TraineeRef { id: number; username: string; }
 
@@ -27,7 +29,7 @@ interface ProfileInfo {
 @Component({
   selector: 'app-user-detail',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, MatButtonModule, MatIconModule, MatCardModule],
+  imports: [RouterLink, MatButtonModule, MatIconModule, MatCardModule, MatFormFieldModule, MatSelectModule],
   template: `
     @if (user(); as u) {
       <h2>{{ u.username }}</h2>
@@ -42,11 +44,18 @@ interface ProfileInfo {
         </div>
         @if (u.trainer_name) {
           <div class="info-row"><span class="label">Trainer</span>
-            @if (myProfile()?.access_level && myProfile()!.access_level >= Role.TRAINER) {
-              <a [routerLink]="['/users', u.trainer_id]">{{ u.trainer_name }}</a>
-            } @else {
-              <span>{{ u.trainer_name }}</span>
-            }
+            <span class="trainer-value">
+              @if (myProfile()?.access_level && myProfile()!.access_level >= Role.TRAINER) {
+                <a [routerLink]="['/users', u.trainer_id]">{{ u.trainer_name }}</a>
+              } @else {
+                {{ u.trainer_name }}
+              }
+              @if (myProfile()?.access_level && myProfile()!.access_level >= Role.MANAGER && u.access_level === Role.TRAINEE) {
+                <button mat-stroked-button class="reassign-btn" (click)="openReassign()">
+                  <mat-icon>swap_horiz</mat-icon> Reassign
+                </button>
+              }
+            </span>
           </div>
         }
         @if (u.created_at) {
@@ -105,6 +114,31 @@ interface ProfileInfo {
         }
       </div>
     }
+
+    <!-- Reassign Dialog -->
+    @if (showReassign()) {
+      <div class="modal-overlay" (click)="showReassign.set(false)">
+        <div class="modal-content" (click)="$event.stopPropagation()">
+          <h3>Reassign {{ user()?.username }}</h3>
+          <p class="reassign-hint">Select a new trainer for this client.</p>
+          @if (reassignError()) { <p class="error-text">{{ reassignError() }}</p> }
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>New Trainer</mat-label>
+            <mat-select (selectionChange)="reassignTrainerId.set($event.value)">
+              @for (t of availableTrainers(); track t.id) {
+                <mat-option [value]="t.id" [disabled]="t.id === user()?.trainer_id">
+                  {{ t.username }} @if (t.id === user()?.trainer_id) { (current) }
+                </mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+          <div class="modal-actions">
+            <button mat-stroked-button (click)="showReassign.set(false)">Cancel</button>
+            <button mat-flat-button color="primary" [disabled]="!reassignTrainerId()" (click)="submitReassign()">Reassign</button>
+          </div>
+        </div>
+      </div>
+    }
   `,
   styles: `
     h2 { margin: 0 0 1rem; }
@@ -116,6 +150,15 @@ interface ProfileInfo {
       &.locked { background: rgba(244,67,54,0.2); color: #f44336; }
       &.pw { background: rgba(255,165,0,0.2); color: #ffa500; }
     }
+    .trainer-value { display: flex; align-items: center; gap: 0.5rem; }
+    .reassign-btn { font-size: 0.75rem; }
+    .reassign-hint { font-size: 0.8125rem; opacity: 0.6; margin: 0 0 0.75rem; }
+    .full-width { width: 100%; }
+    .modal-overlay { position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; }
+    .modal-content { background: var(--mat-sys-surface-container-high, #e9e7eb); color: var(--mat-sys-on-surface, #1a1b1f); border-radius: 12px; padding: 1.5rem; width: 90%; max-width: 400px;
+      h3 { margin: 0 0 0.5rem; }
+    }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; }
     .info-row a { color: var(--mat-sys-primary, #005cbb); text-decoration: none; }
     .info-row a:hover { text-decoration: underline; }
     .trainee-list { display: flex; flex-direction: column; gap: 0.25rem; }
@@ -154,6 +197,12 @@ export class UserDetailComponent implements OnInit {
   readonly myProfile = signal<ProfileInfo | null>(null);
   readonly tempPassword = signal('');
   readonly actionError = signal('');
+
+  // Reassign dialog
+  readonly showReassign = signal(false);
+  readonly availableTrainers = signal<{ id: number; username: string }[]>([]);
+  readonly reassignTrainerId = signal<number | null>(null);
+  readonly reassignError = signal('');
 
   private userId = 0;
 
@@ -220,5 +269,30 @@ export class UserDetailComponent implements OnInit {
     if (!confirm('Revoke all sessions for this user? They will be signed out everywhere.')) return;
     await firstValueFrom(this.http.post(`/api/v1/users/${this.userId}/sessions/revoke-all`, {}));
     this.sessions.set([]);
+  }
+
+  async openReassign(): Promise<void> {
+    this.reassignTrainerId.set(null);
+    this.reassignError.set('');
+    try {
+      const d = await firstValueFrom(this.http.get<{ users: { id: number; username: string; access_level: number }[] }>('/api/v1/users'));
+      this.availableTrainers.set(d.users.filter(u => u.access_level >= Role.TRAINER));
+    } catch { /* ignore */ }
+    this.showReassign.set(true);
+  }
+
+  async submitReassign(): Promise<void> {
+    const tid = this.reassignTrainerId();
+    if (!tid) return;
+    this.reassignError.set('');
+    try {
+      await firstValueFrom(this.http.post(`/api/v1/users/${this.userId}/reassign`, { trainer_id: tid }));
+      this.showReassign.set(false);
+      // Reload the user detail to reflect new trainer
+      const updated = await firstValueFrom(this.http.get<UserDetail>(`/api/v1/users/${this.userId}`));
+      this.user.set(updated);
+    } catch (e: unknown) {
+      this.reassignError.set((e as { error?: { error?: string } })?.error?.error ?? 'Reassign failed');
+    }
   }
 }
