@@ -26,6 +26,11 @@ export const routes: Routes = [
       { path: 'profile', loadComponent: () => import('./features/profile/profile').then(m => m.ProfileComponent) },
       { path: 'users', loadComponent: () => import('./features/users/users').then(m => m.UsersComponent) },
       { path: 'users/:userId', loadComponent: () => import('./features/users/user-detail').then(m => m.UserDetailComponent) },
+      { path: 'targets', loadComponent: () => import('./features/targets/targets').then(m => m.TargetsComponent) },
+      { path: 'targets/:targetId', loadComponent: () => import('./features/targets/target-detail').then(m => m.TargetDetailComponent) },
+      { path: 'exercises', loadComponent: () => import('./features/exercises/exercises').then(m => m.ExercisesComponent) },
+      { path: 'exercises/:exerciseId', loadComponent: () => import('./features/exercises/exercise-detail').then(m => m.ExerciseDetailComponent) },
+      { path: 'equipment', loadComponent: () => import('./features/equipment/equipment').then(m => m.EquipmentComponent) },
     ],
   },
 ];

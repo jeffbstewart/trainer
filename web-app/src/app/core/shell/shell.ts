@@ -3,6 +3,8 @@ import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/rou
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { MatToolbarModule } from '@angular/material/toolbar';
+import { MatSidenavModule } from '@angular/material/sidenav';
+import { MatListModule } from '@angular/material/list';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatMenuModule } from '@angular/material/menu';
@@ -11,7 +13,7 @@ import { AuthService } from '../auth.service';
 @Component({
   selector: 'app-shell',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, MatToolbarModule, MatIconModule, MatButtonModule, MatMenuModule],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, MatToolbarModule, MatSidenavModule, MatListModule, MatIconModule, MatButtonModule, MatMenuModule],
   template: `
     @if (impersonating()) {
       <div class="impersonation-bar">
@@ -20,39 +22,66 @@ import { AuthService } from '../auth.service';
         <button mat-flat-button (click)="endImpersonation()">End Impersonation</button>
       </div>
     }
-    <mat-toolbar class="toolbar" color="primary">
-      <a routerLink="/" class="title">Trainer</a>
-
-      <div class="nav-links">
-        @if (accessLevel() >= 2) {
-          <a mat-button routerLink="/users" routerLinkActive="active-link">
-            <mat-icon>people</mat-icon> Users
+    <mat-sidenav-container class="shell-container">
+      <mat-sidenav #drawer mode="over" class="sidenav">
+        <mat-nav-list>
+          <a mat-list-item routerLink="/" routerLinkActive="active-link"
+             [routerLinkActiveOptions]="{ exact: true }" (click)="drawer.close()">
+            <mat-icon matListItemIcon>home</mat-icon>
+            <span matListItemTitle>Home</span>
           </a>
-        }
-      </div>
 
-      <span class="spacer"></span>
+          @if (accessLevel() >= 2) {
+            <div class="nav-section">TRAINING</div>
+            <a mat-list-item routerLink="/targets" routerLinkActive="active-link" (click)="drawer.close()">
+              <mat-icon matListItemIcon>fitness_center</mat-icon>
+              <span matListItemTitle>Targets</span>
+            </a>
+            <a mat-list-item routerLink="/exercises" routerLinkActive="active-link" (click)="drawer.close()">
+              <mat-icon matListItemIcon>sports_gymnastics</mat-icon>
+              <span matListItemTitle>Exercises</span>
+            </a>
+            <a mat-list-item routerLink="/equipment" routerLinkActive="active-link" (click)="drawer.close()">
+              <mat-icon matListItemIcon>inventory_2</mat-icon>
+              <span matListItemTitle>Equipment</span>
+            </a>
 
-      <!-- Future: search bar, client quick-select, etc. -->
+            <div class="nav-section">MANAGE</div>
+            <a mat-list-item routerLink="/users" routerLinkActive="active-link" (click)="drawer.close()">
+              <mat-icon matListItemIcon>people</mat-icon>
+              <span matListItemTitle>Users</span>
+            </a>
+          }
+        </mat-nav-list>
+      </mat-sidenav>
 
-      <span class="username">{{ username() }}</span>
-      <button mat-icon-button [matMenuTriggerFor]="profileMenu" aria-label="Profile menu">
-        <mat-icon>account_circle</mat-icon>
-      </button>
-      <mat-menu #profileMenu="matMenu">
-        <a mat-menu-item routerLink="/profile">
-          <mat-icon>person</mat-icon>
-          <span>Profile &amp; Settings</span>
-        </a>
-        <button mat-menu-item (click)="onLogout()">
-          <mat-icon>logout</mat-icon>
-          <span>Sign Out</span>
-        </button>
-      </mat-menu>
-    </mat-toolbar>
-    <div class="content">
-      <router-outlet />
-    </div>
+      <mat-sidenav-content>
+        <mat-toolbar class="toolbar" color="primary">
+          <button mat-icon-button (click)="drawer.toggle()" aria-label="Toggle navigation">
+            <mat-icon>menu</mat-icon>
+          </button>
+          <a routerLink="/" class="title">Trainer</a>
+          <span class="spacer"></span>
+          <span class="username">{{ username() }}</span>
+          <button mat-icon-button [matMenuTriggerFor]="profileMenu" aria-label="Profile menu">
+            <mat-icon>account_circle</mat-icon>
+          </button>
+          <mat-menu #profileMenu="matMenu">
+            <a mat-menu-item routerLink="/profile">
+              <mat-icon>person</mat-icon>
+              <span>Profile &amp; Settings</span>
+            </a>
+            <button mat-menu-item (click)="onLogout()">
+              <mat-icon>logout</mat-icon>
+              <span>Sign Out</span>
+            </button>
+          </mat-menu>
+        </mat-toolbar>
+        <div class="content">
+          <router-outlet />
+        </div>
+      </mat-sidenav-content>
+    </mat-sidenav-container>
   `,
   styles: `
     .impersonation-bar {
@@ -61,15 +90,19 @@ import { AuthService } from '../auth.service';
       mat-icon { font-size: 20px; width: 20px; height: 20px; }
       button { margin-left: auto; }
     }
+    .shell-container { height: 100vh; }
+    .sidenav { width: 260px; }
+    .nav-section {
+      font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.05em;
+      opacity: 0.4; padding: 12px 16px 4px;
+    }
+    .active-link { background: rgba(0,0,0,0.08); }
     .toolbar {
       position: sticky; top: 0; z-index: 1;
       background: var(--mat-sys-primary, #005cbb);
       color: var(--mat-sys-on-primary, #ffffff);
     }
-    .title { font-size: 1.125rem; font-weight: 700; text-decoration: none; color: inherit; margin-right: 1rem; }
-    .nav-links { display: flex; gap: 0.25rem; }
-    .nav-links a { color: inherit; }
-    .active-link { background: rgba(255,255,255,0.15); }
+    .title { font-size: 1.125rem; font-weight: 700; text-decoration: none; color: inherit; margin-left: 0.5rem; }
     .spacer { flex: 1; }
     .username { font-size: 0.8125rem; opacity: 0.7; margin-right: 0.25rem; }
     .content { padding: 1.5rem; max-width: 1200px; margin: 0 auto; }

@@ -38,6 +38,9 @@ object ArmeriaServer {
 
         // Authenticated API endpoints
         sb.annotatedService().decorator(authDecorator).build(ProfileHttpService())
+        sb.annotatedService().decorator(authDecorator).build(TargetHttpService())
+        sb.annotatedService().decorator(authDecorator).build(ExerciseHttpService())
+        sb.annotatedService().decorator(authDecorator).build(EquipmentHttpService())
         sb.annotatedService().decorator(authDecorator).build(UserManagementHttpService())
 
         // Angular SPA at /app/
