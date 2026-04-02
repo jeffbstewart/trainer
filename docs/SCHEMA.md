@@ -42,9 +42,8 @@ Scoped per trainer — trainers cannot see each other's targets.
 
 ### exercise
 
-Individual exercises with form guidance and progression ranking.
-Scoped per trainer. Progression order is derived from `progression_rank`
-within a target (computed in application code, not a separate table).
+Individual exercises with form guidance and difficulty rating.
+Scoped per trainer.
 
 | Column | Type | Notes |
 |--------|------|-------|
@@ -53,7 +52,7 @@ within a target (computed in application code, not a separate table).
 | name | VARCHAR(200) | |
 | description | TEXT | General description |
 | form_notes | TEXT | Technique guidance |
-| progression_rank | INT | Higher = harder. Progression order per target derived from this. |
+| difficulty | VARCHAR(20) | BEGINNER, INTERMEDIATE, or ADVANCED |
 | created_at | TIMESTAMP | |
 | updated_at | TIMESTAMP | |
 
@@ -82,20 +81,36 @@ Photos and videos of proper technique, per exercise.
 
 ## Workout Data
 
+### program
+
+A training block (typically ~8 weeks) grouping upper/lower workout plans
+for a trainee. The unit of planning for trainers.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | BIGINT PK | |
+| trainee_id | BIGINT FK | Which client |
+| trainer_id | BIGINT FK | Which trainer created it |
+| name | VARCHAR(200) | e.g., "Spring 2026" |
+| sequence | VARCHAR(100) | Freetext ordering (e.g., "12", "Phase 3"). Numeric sort when all-numeric. |
+| started_at | DATE | When the program started |
+| ended_at | DATE | When the program ended (null if active) |
+| created_at | TIMESTAMP | |
+
 ### workout_plan
 
-A template for a workout session. Each plan has a sequence identifier
-(freetext, trainer's choice — could be "#12", "Phase 3 Week 2", etc.)
-and a type (upper/lower/full/custom).
+A template for a workout session within a program. Each plan has a sequence
+identifier (freetext) and a type (upper/lower/full/custom).
 
 After 3-4 sessions of the same plan, the trainer creates the next plan.
 
 | Column | Type | Notes |
 |--------|------|-------|
 | id | BIGINT PK | |
+| program_id | BIGINT FK | Parent program (nullable for legacy plans) |
 | trainee_id | BIGINT FK | Which client this plan is for |
 | trainer_id | BIGINT FK | Which trainer created it (survives reassignment) |
-| name | VARCHAR(200) | e.g., "Upper Body" |
+| name | VARCHAR(200) | e.g., "Upper Body A" |
 | sequence | VARCHAR(100) | Freetext ordering field. Numeric sort when all-numeric, lexicographic otherwise. |
 | plan_type | VARCHAR(50) | UPPER, LOWER, FULL, CUSTOM |
 | created_at | TIMESTAMP | |
@@ -142,13 +157,16 @@ Individual sets are tracked in `workout_session_set`.
 
 ### workout_session_set
 
-Individual sets within an exercise in a session.
+Individual sets within an exercise in a session. Each set belongs to a
+round (circuit lap). In a typical 3-round circuit, each exercise has
+3 sets (one per round).
 
 | Column | Type | Notes |
 |--------|------|-------|
 | id | BIGINT PK | |
 | session_exercise_id | BIGINT FK | Points to workout_session_exercise |
-| set_number | INT | 1, 2, 3, ... |
+| set_number | INT | Sequential set number (1, 2, 3, ...) |
+| round_number | INT | Which circuit round (1, 2, 3) |
 | weight | DECIMAL(8,2) | Weight used (nullable for bodyweight) |
 | reps | INT | Repetitions completed |
 
@@ -192,19 +210,8 @@ plans in order, the application sorts by:
 
 This allows trainers to use "1", "2", "3" or "Phase 1 Week 1", "Phase 1 Week 2", etc.
 
-## Progression Notes
+## Difficulty Notes
 
-Exercise progressions are **not stored as relationships** in the database.
-Instead, progression order within a target is derived at query time from
-`exercise.progression_rank` grouped by target (via `exercise_target`).
-
-For a given target, the progression is:
-```
-SELECT e.* FROM exercise e
-JOIN exercise_target et ON et.exercise_id = e.id
-WHERE et.target_id = ? AND e.trainer_id = ?
-ORDER BY e.progression_rank ASC
-```
-
-Lower rank = easier, higher rank = harder. The "next" exercise in a
-progression is the next higher rank for the same target.
+Exercises have a `difficulty` field: BEGINNER, INTERMEDIATE, or ADVANCED.
+This is a simple classification — not a strict progression ordering.
+Target landing pages group exercises by difficulty level.
