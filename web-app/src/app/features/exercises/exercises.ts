@@ -64,12 +64,6 @@ interface ExerciseRow {
           </div>
         </td>
       </ng-container>
-      <ng-container matColumnDef="difficulty">
-        <th mat-header-cell *matHeaderCellDef mat-sort-header>Difficulty</th>
-        <td mat-cell *matCellDef="let ex">
-          <span class="difficulty-badge" [attr.data-level]="ex.difficulty">{{ difficultyLabel(ex.difficulty) }}</span>
-        </td>
-      </ng-container>
       <tr mat-header-row *matHeaderRowDef="columns"></tr>
       <tr mat-row *matRowDef="let row; columns: columns;"></tr>
     </table>
@@ -156,7 +150,7 @@ export class ExercisesComponent implements OnInit, AfterViewInit {
   readonly sort = viewChild(MatSort);
   readonly paginator = viewChild(MatPaginator);
   readonly dataSource = new MatTableDataSource<ExerciseRow>([]);
-  readonly columns = ['name', 'targets', 'equipment', 'difficulty'];
+  readonly columns = ['name', 'targets', 'equipment'];
 
   readonly availableTargets = signal<TargetRef[]>([]);
   readonly availableEquipment = signal<EquipRef[]>([]);

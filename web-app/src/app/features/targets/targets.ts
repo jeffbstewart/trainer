@@ -1,21 +1,22 @@
-import { Component, inject, signal, OnInit, ChangeDetectionStrategy } from '@angular/core';
+import { Component, inject, signal, viewChild, OnInit, AfterViewInit, ChangeDetectionStrategy } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
-import { MatTableModule } from '@angular/material/table';
+import { MatTableModule, MatTableDataSource } from '@angular/material/table';
+import { MatSortModule, MatSort } from '@angular/material/sort';
+import { MatPaginatorModule, MatPaginator } from '@angular/material/paginator';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
-import { MatChipsModule } from '@angular/material/chips';
 
 interface TargetRow { id: number; name: string; category: string; exercise_count: number; }
 
 @Component({
   selector: 'app-targets',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, MatTableModule, MatButtonModule, MatIconModule, MatFormFieldModule, MatInputModule, MatSelectModule, MatChipsModule],
+  imports: [RouterLink, MatTableModule, MatSortModule, MatPaginatorModule, MatButtonModule, MatIconModule, MatFormFieldModule, MatInputModule, MatSelectModule],
   template: `
     <div class="header-row">
       <h2>Targets</h2>
@@ -24,24 +25,39 @@ interface TargetRow { id: number; name: string; category: string; exercise_count
       </button>
     </div>
 
-    <div class="target-grid">
-      @for (t of targets(); track t.id) {
-        <div class="target-card">
-          <div class="target-header">
-            <a class="target-name" [routerLink]="['/targets', t.id]">{{ t.name }}</a>
-            <span class="target-category">{{ categoryLabel(t.category) }}</span>
-          </div>
-          <span class="target-count">{{ t.exercise_count }} exercise{{ t.exercise_count === 1 ? '' : 's' }}</span>
-          <div class="target-actions">
-            <button mat-icon-button (click)="openDialog(t)" title="Edit"><mat-icon>edit</mat-icon></button>
-            <button mat-icon-button (click)="deleteTarget(t)" title="Delete"><mat-icon>delete</mat-icon></button>
-          </div>
-        </div>
-      }
-      @if (targets().length === 0) {
-        <p class="empty-text">No targets yet. Create muscle groups and objectives to organize your exercises.</p>
-      }
-    </div>
+    <mat-form-field appearance="outline" class="search-field">
+      <mat-label>Search</mat-label>
+      <mat-icon matPrefix>search</mat-icon>
+      <input matInput (input)="applyFilter($any($event.target).value)" placeholder="Filter targets" />
+    </mat-form-field>
+
+    <table mat-table [dataSource]="dataSource" matSort class="target-table">
+      <ng-container matColumnDef="name">
+        <th mat-header-cell *matHeaderCellDef mat-sort-header>Name</th>
+        <td mat-cell *matCellDef="let t">
+          <a [routerLink]="['/targets', t.id]">{{ t.name }}</a>
+        </td>
+      </ng-container>
+      <ng-container matColumnDef="category">
+        <th mat-header-cell *matHeaderCellDef mat-sort-header>Category</th>
+        <td mat-cell *matCellDef="let t">{{ categoryLabel(t.category) }}</td>
+      </ng-container>
+      <ng-container matColumnDef="exercise_count">
+        <th mat-header-cell *matHeaderCellDef mat-sort-header>Exercises</th>
+        <td mat-cell *matCellDef="let t">{{ t.exercise_count }}</td>
+      </ng-container>
+      <ng-container matColumnDef="actions">
+        <th mat-header-cell *matHeaderCellDef></th>
+        <td mat-cell *matCellDef="let t">
+          <button mat-icon-button (click)="openDialog(t)" title="Edit"><mat-icon>edit</mat-icon></button>
+          <button mat-icon-button (click)="deleteTarget(t)" title="Delete"><mat-icon>delete</mat-icon></button>
+        </td>
+      </ng-container>
+      <tr mat-header-row *matHeaderRowDef="columns"></tr>
+      <tr mat-row *matRowDef="let row; columns: columns;"></tr>
+    </table>
+
+    <mat-paginator [pageSizeOptions]="[10, 25, 50]" [pageSize]="25" showFirstLastButtons />
 
     @if (dialogOpen()) {
       <div class="modal-overlay" (click)="closeDialog()">
@@ -71,19 +87,10 @@ interface TargetRow { id: number; name: string; category: string; exercise_count
   styles: `
     .header-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
     h2 { margin: 0; }
-    .target-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1rem; }
-    .target-card {
-      background: var(--mat-sys-surface-container, #efedf0); color: var(--mat-sys-on-surface, #1a1b1f);
-      border-radius: 12px; padding: 1rem; display: flex; flex-direction: column; gap: 0.25rem;
-    }
-    .target-header { display: flex; align-items: center; gap: 0.5rem; }
-    .target-name { font-weight: 600; font-size: 1rem; color: var(--mat-sys-primary, #005cbb); text-decoration: none;
-      &:hover { text-decoration: underline; }
-    }
-    .target-category { font-size: 0.6875rem; opacity: 0.5; text-transform: uppercase; letter-spacing: 0.05em; }
-    .target-count { font-size: 0.8125rem; opacity: 0.6; }
-    .target-actions { display: flex; gap: 0.25rem; margin-top: 0.25rem; }
-    .empty-text { opacity: 0.5; grid-column: 1 / -1; }
+    .search-field { width: 100%; max-width: 400px; margin-bottom: 0.5rem; }
+    .target-table { width: 100%; }
+    .target-table a { color: var(--mat-sys-primary, #005cbb); text-decoration: none; }
+    .target-table a:hover { text-decoration: underline; }
     .full-width { width: 100%; }
     .modal-overlay { position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; }
     .modal-content { background: var(--mat-sys-surface-container-high, #e9e7eb); color: var(--mat-sys-on-surface, #1a1b1f); border-radius: 12px; padding: 1.5rem; width: 90%; max-width: 400px;
@@ -93,10 +100,14 @@ interface TargetRow { id: number; name: string; category: string; exercise_count
     .error-text { color: #f44336; font-size: 0.8125rem; }
   `,
 })
-export class TargetsComponent implements OnInit {
+export class TargetsComponent implements OnInit, AfterViewInit {
   private readonly http = inject(HttpClient);
 
-  readonly targets = signal<TargetRow[]>([]);
+  readonly sort = viewChild(MatSort);
+  readonly paginator = viewChild(MatPaginator);
+  readonly dataSource = new MatTableDataSource<TargetRow>([]);
+  readonly columns = ['name', 'category', 'exercise_count', 'actions'];
+
   readonly dialogOpen = signal(false);
   readonly editId = signal<number | null>(null);
   readonly dialogName = signal('');
@@ -105,12 +116,21 @@ export class TargetsComponent implements OnInit {
 
   async ngOnInit(): Promise<void> { await this.refresh(); }
 
+  ngAfterViewInit(): void {
+    const s = this.sort();
+    const p = this.paginator();
+    if (s) { this.dataSource.sort = s; s.active = 'name'; s.direction = 'asc'; }
+    if (p) this.dataSource.paginator = p;
+  }
+
   async refresh(): Promise<void> {
     try {
       const d = await firstValueFrom(this.http.get<{ targets: TargetRow[] }>('/api/v1/targets'));
-      this.targets.set(d.targets);
+      this.dataSource.data = d.targets;
     } catch { /* ignore */ }
   }
+
+  applyFilter(value: string): void { this.dataSource.filter = value.trim().toLowerCase(); }
 
   categoryLabel(c: string): string {
     switch (c) { case 'MUSCLE': return 'Muscle'; case 'MUSCLE_GROUP': return 'Group'; case 'OBJECTIVE': return 'Objective'; default: return c; }
@@ -144,7 +164,7 @@ export class TargetsComponent implements OnInit {
   }
 
   async deleteTarget(t: TargetRow): Promise<void> {
-    if (!confirm(`Delete "${t.name}"? ${t.exercise_count > 0 ? `This will unlink ${t.exercise_count} exercise(s).` : ''}`)) return;
+    if (!confirm(`Delete "${t.name}"?${t.exercise_count > 0 ? ` This will unlink ${t.exercise_count} exercise(s).` : ''}`)) return;
     await firstValueFrom(this.http.delete(`/api/v1/targets/${t.id}`));
     await this.refresh();
   }
