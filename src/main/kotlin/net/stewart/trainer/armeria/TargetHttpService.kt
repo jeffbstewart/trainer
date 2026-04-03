@@ -102,8 +102,10 @@ class TargetHttpService {
         val target = Target.findById(targetId) ?: return HttpResponse.of(HttpStatus.NOT_FOUND)
         if (target.trainer_id != user.id) return HttpResponse.of(HttpStatus.FORBIDDEN)
 
-        // Remove exercise associations first
-        ExerciseTarget.findAll().filter { it.target_id == targetId }.forEach { it.delete() }
+        // Block deletion if target is used by any exercise
+        val usedByExercises = ExerciseTarget.findAll().any { it.target_id == targetId }
+        if (usedByExercises) return badRequest("Cannot delete target that is used by an exercise")
+
         target.delete()
         return json(mapOf("ok" to true))
     }

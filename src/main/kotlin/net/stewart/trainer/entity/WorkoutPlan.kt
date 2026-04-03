@@ -14,6 +14,7 @@ data class WorkoutPlan(
     var name: String = "",
     var sequence: String? = null,
     var plan_type: String = "CUSTOM",
+    var sort_order: Int = 0,
     var created_at: LocalDateTime? = null
 ) : KEntity<Long> {
     companion object : Dao<WorkoutPlan, Long>(WorkoutPlan::class.java)

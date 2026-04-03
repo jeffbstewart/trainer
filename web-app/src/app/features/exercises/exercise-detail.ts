@@ -92,6 +92,14 @@ interface ExerciseDetail {
               }
             </mat-select>
           </mat-form-field>
+          <div class="inline-add">
+            <mat-form-field appearance="outline" class="inline-add-field">
+              <mat-label>New target</mat-label>
+              <input matInput [value]="newTargetName()" (input)="newTargetName.set($any($event.target).value)"
+                     (keydown.enter)="addTarget()" />
+            </mat-form-field>
+            <button mat-icon-button [disabled]="!newTargetName().trim()" (click)="addTarget()"><mat-icon>add</mat-icon></button>
+          </div>
           <mat-form-field appearance="outline" class="full-width">
             <mat-label>Equipment</mat-label>
             <mat-select [value]="editEquipmentIds()" (selectionChange)="editEquipmentIds.set($event.value)" multiple>
@@ -100,6 +108,14 @@ interface ExerciseDetail {
               }
             </mat-select>
           </mat-form-field>
+          <div class="inline-add">
+            <mat-form-field appearance="outline" class="inline-add-field">
+              <mat-label>New equipment</mat-label>
+              <input matInput [value]="newEquipmentName()" (input)="newEquipmentName.set($any($event.target).value)"
+                     (keydown.enter)="addEquipment()" />
+            </mat-form-field>
+            <button mat-icon-button [disabled]="!newEquipmentName().trim()" (click)="addEquipment()"><mat-icon>add</mat-icon></button>
+          </div>
           <mat-form-field appearance="outline" class="full-width">
             <mat-label>Difficulty</mat-label>
             <mat-select [value]="editDifficulty()" (selectionChange)="editDifficulty.set($event.value)">
@@ -149,6 +165,8 @@ interface ExerciseDetail {
       border-radius: 12px; padding: 1.5rem; width: 90%; max-width: 500px; max-height: 90vh; overflow-y: auto;
       h3 { margin: 0 0 1rem; }
     }
+    .inline-add { display: flex; align-items: center; gap: 0.25rem; margin-top: -0.75rem; margin-bottom: 0.5rem; }
+    .inline-add-field { flex: 1; font-size: 0.8125rem; }
     .modal-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; }
     .error-text { color: #f44336; font-size: 0.8125rem; }
   `,
@@ -170,6 +188,8 @@ export class ExerciseDetailComponent implements OnInit {
   readonly editError = signal('');
   readonly availableTargets = signal<Ref[]>([]);
   readonly availableEquipment = signal<Ref[]>([]);
+  readonly newTargetName = signal('');
+  readonly newEquipmentName = signal('');
 
   private exerciseId = 0;
 
@@ -210,10 +230,42 @@ export class ExerciseDetailComponent implements OnInit {
     this.editEquipmentIds.set(ex.equipment.map(e => e.id));
     this.editDifficulty.set(ex.difficulty);
     this.editError.set('');
+    this.newTargetName.set('');
+    this.newEquipmentName.set('');
     this.editOpen.set(true);
   }
 
   closeEdit(): void { this.editOpen.set(false); }
+
+  async addTarget(): Promise<void> {
+    const name = this.newTargetName().trim();
+    if (!name) return;
+    try {
+      const r = await firstValueFrom(this.http.post<{ ok: boolean; id: number }>('/api/v1/targets', { name }));
+      if (r.id) {
+        this.availableTargets.update(list => [...list, { id: r.id, name }]);
+        this.editTargetIds.update(ids => [...ids, r.id]);
+        this.newTargetName.set('');
+      }
+    } catch (e: unknown) {
+      this.editError.set((e as { error?: { error?: string } })?.error?.error ?? 'Failed to create target');
+    }
+  }
+
+  async addEquipment(): Promise<void> {
+    const name = this.newEquipmentName().trim();
+    if (!name) return;
+    try {
+      const r = await firstValueFrom(this.http.post<{ ok: boolean; id: number }>('/api/v1/equipment', { name }));
+      if (r.id) {
+        this.availableEquipment.update(list => [...list, { id: r.id, name }]);
+        this.editEquipmentIds.update(ids => [...ids, r.id]);
+        this.newEquipmentName.set('');
+      }
+    } catch (e: unknown) {
+      this.editError.set((e as { error?: { error?: string } })?.error?.error ?? 'Failed to create equipment');
+    }
+  }
 
   async saveEdit(): Promise<void> {
     this.editError.set('');

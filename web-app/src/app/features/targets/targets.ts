@@ -164,8 +164,12 @@ export class TargetsComponent implements OnInit, AfterViewInit {
   }
 
   async deleteTarget(t: TargetRow): Promise<void> {
-    if (!confirm(`Delete "${t.name}"?${t.exercise_count > 0 ? ` This will unlink ${t.exercise_count} exercise(s).` : ''}`)) return;
-    await firstValueFrom(this.http.delete(`/api/v1/targets/${t.id}`));
-    await this.refresh();
+    if (!confirm(`Delete "${t.name}"?`)) return;
+    try {
+      await firstValueFrom(this.http.delete(`/api/v1/targets/${t.id}`));
+      await this.refresh();
+    } catch (err: unknown) {
+      alert((err as { error?: { error?: string } })?.error?.error ?? 'Delete failed');
+    }
   }
 }

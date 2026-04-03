@@ -140,8 +140,12 @@ export class EquipmentComponent implements OnInit, AfterViewInit {
   }
 
   async deleteItem(e: EquipmentRow): Promise<void> {
-    if (!confirm(`Delete "${e.name}"?${e.exercise_count > 0 ? ` This will unlink ${e.exercise_count} exercise(s).` : ''}`)) return;
-    await firstValueFrom(this.http.delete(`/api/v1/equipment/${e.id}`));
-    await this.refresh();
+    if (!confirm(`Delete "${e.name}"?`)) return;
+    try {
+      await firstValueFrom(this.http.delete(`/api/v1/equipment/${e.id}`));
+      await this.refresh();
+    } catch (err: unknown) {
+      alert((err as { error?: { error?: string } })?.error?.error ?? 'Delete failed');
+    }
   }
 }

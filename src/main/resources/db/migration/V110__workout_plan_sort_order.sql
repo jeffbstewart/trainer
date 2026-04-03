@@ -1,0 +1,1 @@
+ALTER TABLE workout_plan ADD COLUMN sort_order INT DEFAULT 0 NOT NULL;

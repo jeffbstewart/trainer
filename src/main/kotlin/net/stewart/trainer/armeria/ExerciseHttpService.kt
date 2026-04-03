@@ -16,6 +16,7 @@ import net.stewart.trainer.entity.Exercise
 import net.stewart.trainer.entity.ExerciseEquipment
 import net.stewart.trainer.entity.ExerciseTarget
 import net.stewart.trainer.entity.Target
+import net.stewart.trainer.entity.WorkoutPlanExercise
 import java.time.LocalDateTime
 
 @Blocking
@@ -23,14 +24,15 @@ class ExerciseHttpService {
 
     private val gson = Gson()
 
-    /** List all exercises for the current trainer, with their targets. */
+    /** List exercises. Defaults to current user's exercises. Admins/managers can pass trainer_id. */
     @Get("/api/v1/exercises")
-    fun list(ctx: ServiceRequestContext): HttpResponse {
+    fun list(ctx: ServiceRequestContext, @com.linecorp.armeria.server.annotation.Param("trainer_id") @com.linecorp.armeria.server.annotation.Default("0") trainerId: Long): HttpResponse {
         val (user, err) = AuthDecorator.requireTrainer(ctx)
         if (user == null) return err!!
 
-        val exercises = Exercise.findAll().filter { it.trainer_id == user.id }
-        val allTargets = Target.findAll().filter { it.trainer_id == user.id }.associateBy { it.id }
+        val effectiveTrainerId = if (trainerId > 0 && user.isManager()) trainerId else user.id!!
+        val exercises = Exercise.findAll().filter { it.trainer_id == effectiveTrainerId }
+        val allTargets = Target.findAll().filter { it.trainer_id == effectiveTrainerId }.associateBy { it.id }
         val allEquipment = Equipment.findAll().filter { it.trainer_id == user.id }.associateBy { it.id }
         val allTargetLinks = ExerciseTarget.findAll()
         val allEquipLinks = ExerciseEquipment.findAll()
@@ -190,7 +192,12 @@ class ExerciseHttpService {
         val ex = Exercise.findById(exerciseId) ?: return HttpResponse.of(HttpStatus.NOT_FOUND)
         if (ex.trainer_id != user.id) return HttpResponse.of(HttpStatus.FORBIDDEN)
 
+        // Block deletion if exercise is used in any workout plan
+        val usedInPlans = WorkoutPlanExercise.findAll().any { it.exercise_id == exerciseId }
+        if (usedInPlans) return badRequest("Cannot delete exercise that is used in a workout plan")
+
         ExerciseTarget.findAll().filter { it.exercise_id == exerciseId }.forEach { it.delete() }
+        ExerciseEquipment.findAll().filter { it.exercise_id == exerciseId }.forEach { it.delete() }
         ex.delete()
         return json(mapOf("ok" to true))
     }

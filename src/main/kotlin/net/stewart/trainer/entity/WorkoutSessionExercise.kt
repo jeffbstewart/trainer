@@ -11,7 +11,8 @@ data class WorkoutSessionExercise(
     var exercise_id: Long = 0,
     var set_style: String? = null,
     var resistance_note: String? = null,
-    var notes: String? = null
+    var notes: String? = null,
+    var substitute_name: String? = null
 ) : KEntity<Long> {
     companion object : Dao<WorkoutSessionExercise, Long>(WorkoutSessionExercise::class.java)
 }

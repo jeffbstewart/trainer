@@ -1,0 +1,2 @@
+ALTER TABLE workout_session_set ADD COLUMN marker VARCHAR(1) DEFAULT NULL;
+ALTER TABLE workout_session_set ADD COLUMN skipped BOOLEAN DEFAULT FALSE NOT NULL;

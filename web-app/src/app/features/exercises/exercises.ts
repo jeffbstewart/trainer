@@ -64,6 +64,12 @@ interface ExerciseRow {
           </div>
         </td>
       </ng-container>
+      <ng-container matColumnDef="actions">
+        <th mat-header-cell *matHeaderCellDef></th>
+        <td mat-cell *matCellDef="let ex">
+          <button mat-icon-button (click)="deleteExercise(ex)" title="Delete"><mat-icon>delete</mat-icon></button>
+        </td>
+      </ng-container>
       <tr mat-header-row *matHeaderRowDef="columns"></tr>
       <tr mat-row *matRowDef="let row; columns: columns;"></tr>
     </table>
@@ -87,6 +93,14 @@ interface ExerciseRow {
               }
             </mat-select>
           </mat-form-field>
+          <div class="inline-add">
+            <mat-form-field appearance="outline" class="inline-add-field">
+              <mat-label>New equipment</mat-label>
+              <input matInput [value]="newEquipmentName()" (input)="newEquipmentName.set($any($event.target).value)"
+                     (keydown.enter)="addEquipment()" />
+            </mat-form-field>
+            <button mat-icon-button [disabled]="!newEquipmentName().trim()" (click)="addEquipment()"><mat-icon>add</mat-icon></button>
+          </div>
           <mat-form-field appearance="outline" class="full-width">
             <mat-label>Targets</mat-label>
             <mat-select [value]="dialogTargetIds()" (selectionChange)="dialogTargetIds.set($event.value)" multiple>
@@ -96,6 +110,14 @@ interface ExerciseRow {
             </mat-select>
             <mat-hint>Leave empty to assign "TBD"</mat-hint>
           </mat-form-field>
+          <div class="inline-add">
+            <mat-form-field appearance="outline" class="inline-add-field">
+              <mat-label>New target</mat-label>
+              <input matInput [value]="newTargetName()" (input)="newTargetName.set($any($event.target).value)"
+                     (keydown.enter)="addTarget()" />
+            </mat-form-field>
+            <button mat-icon-button [disabled]="!newTargetName().trim()" (click)="addTarget()"><mat-icon>add</mat-icon></button>
+          </div>
           <mat-form-field appearance="outline" class="full-width">
             <mat-label>Difficulty</mat-label>
             <mat-select [value]="dialogDifficulty()" (selectionChange)="dialogDifficulty.set($event.value)">
@@ -142,6 +164,8 @@ interface ExerciseRow {
     .modal-content { background: var(--mat-sys-surface-container-high, #e9e7eb); color: var(--mat-sys-on-surface, #1a1b1f); border-radius: 12px; padding: 1.5rem; width: 90%; max-width: 500px;
       h3 { margin: 0 0 1rem; }
     }
+    .inline-add { display: flex; align-items: center; gap: 0.25rem; margin-top: -0.75rem; margin-bottom: 0.5rem; }
+    .inline-add-field { flex: 1; font-size: 0.8125rem; }
     .modal-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; }
     .error-text { color: #f44336; font-size: 0.8125rem; }
   `,
@@ -152,7 +176,7 @@ export class ExercisesComponent implements OnInit, AfterViewInit {
   readonly sort = viewChild(MatSort);
   readonly paginator = viewChild(MatPaginator);
   readonly dataSource = new MatTableDataSource<ExerciseRow>([]);
-  readonly columns = ['name', 'targets', 'equipment'];
+  readonly columns = ['name', 'targets', 'equipment', 'actions'];
 
   readonly availableTargets = signal<TargetRef[]>([]);
   readonly availableEquipment = signal<EquipRef[]>([]);
@@ -163,6 +187,8 @@ export class ExercisesComponent implements OnInit, AfterViewInit {
   readonly dialogEquipmentIds = signal<number[]>([]);
   readonly dialogDifficulty = signal('INTERMEDIATE');
   readonly dialogError = signal('');
+  readonly newEquipmentName = signal('');
+  readonly newTargetName = signal('');
 
   async ngOnInit(): Promise<void> { await this.refresh(); }
 
@@ -207,10 +233,42 @@ export class ExercisesComponent implements OnInit, AfterViewInit {
     this.dialogEquipmentIds.set(existing?.equipment.map(e => e.id) ?? []);
     this.dialogDifficulty.set(existing?.difficulty ?? 'INTERMEDIATE');
     this.dialogError.set('');
+    this.newEquipmentName.set('');
+    this.newTargetName.set('');
     this.dialogOpen.set(true);
   }
 
   closeDialog(): void { this.dialogOpen.set(false); }
+
+  async addEquipment(): Promise<void> {
+    const name = this.newEquipmentName().trim();
+    if (!name) return;
+    try {
+      const r = await firstValueFrom(this.http.post<{ ok: boolean; id: number }>('/api/v1/equipment', { name }));
+      if (r.id) {
+        this.availableEquipment.update(list => [...list, { id: r.id, name }]);
+        this.dialogEquipmentIds.update(ids => [...ids, r.id]);
+        this.newEquipmentName.set('');
+      }
+    } catch (e: unknown) {
+      this.dialogError.set((e as { error?: { error?: string } })?.error?.error ?? 'Failed to create equipment');
+    }
+  }
+
+  async addTarget(): Promise<void> {
+    const name = this.newTargetName().trim();
+    if (!name) return;
+    try {
+      const r = await firstValueFrom(this.http.post<{ ok: boolean; id: number }>('/api/v1/targets', { name }));
+      if (r.id) {
+        this.availableTargets.update(list => [...list, { id: r.id, name }]);
+        this.dialogTargetIds.update(ids => [...ids, r.id]);
+        this.newTargetName.set('');
+      }
+    } catch (e: unknown) {
+      this.dialogError.set((e as { error?: { error?: string } })?.error?.error ?? 'Failed to create target');
+    }
+  }
 
   async save(): Promise<void> {
     this.dialogError.set('');
@@ -231,6 +289,16 @@ export class ExercisesComponent implements OnInit, AfterViewInit {
       await this.refresh();
     } catch (e: unknown) {
       this.dialogError.set((e as { error?: { error?: string } })?.error?.error ?? 'Save failed');
+    }
+  }
+
+  async deleteExercise(ex: ExerciseRow): Promise<void> {
+    if (!confirm(`Delete "${ex.name}"?`)) return;
+    try {
+      await firstValueFrom(this.http.delete(`/api/v1/exercises/${ex.id}`));
+      await this.refresh();
+    } catch (err: unknown) {
+      alert((err as { error?: { error?: string } })?.error?.error ?? 'Delete failed');
     }
   }
 }

@@ -13,6 +13,7 @@ import { MatSelectModule } from '@angular/material/select';
 interface ProgramRow {
   id: number; name: string; sequence: string | null;
   trainee_id: number; trainee_name: string;
+  first_session_date: string | null; last_session_date: string | null;
   started_at: string | null; ended_at: string | null; active: boolean;
 }
 
@@ -46,9 +47,9 @@ interface TraineeRef { id: number; username: string; }
           <th mat-header-cell *matHeaderCellDef>Client</th>
           <td mat-cell *matCellDef="let p">{{ p.trainee_name }}</td>
         </ng-container>
-        <ng-container matColumnDef="started">
-          <th mat-header-cell *matHeaderCellDef>Started</th>
-          <td mat-cell *matCellDef="let p">{{ p.started_at ?? '—' }}</td>
+        <ng-container matColumnDef="dates">
+          <th mat-header-cell *matHeaderCellDef>Dates</th>
+          <td mat-cell *matCellDef="let p">{{ formatDates(p) }}</td>
         </ng-container>
         <ng-container matColumnDef="status">
           <th mat-header-cell *matHeaderCellDef>Status</th>
@@ -100,7 +101,7 @@ interface TraineeRef { id: number; username: string; }
     .header-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
     h2 { margin: 0; }
     .program-table { width: 100%; }
-    .program-table a { color: var(--mat-sys-primary, #005cbb); text-decoration: none; }
+    .program-table a { color: var(--mat-sys-primary, #005cbb); text-decoration: none; display: block; padding: 16px 0; margin: -16px 0; }
     .program-table a:hover { text-decoration: underline; }
     .status-badge { font-size: 0.6875rem; font-weight: 600; padding: 2px 8px; border-radius: 4px;
       background: rgba(150,150,150,0.15); color: rgba(150,150,150,1);
@@ -121,7 +122,7 @@ export class ProgramsComponent implements OnInit {
 
   readonly programs = signal<ProgramRow[]>([]);
   readonly trainees = signal<TraineeRef[]>([]);
-  readonly columns = ['sequence', 'name', 'trainee', 'started', 'status'];
+  readonly columns = ['sequence', 'name', 'trainee', 'dates', 'status'];
 
   readonly showCreate = signal(false);
   readonly createName = signal('');
@@ -140,6 +141,14 @@ export class ProgramsComponent implements OnInit {
       this.programs.set(programs.programs);
       this.trainees.set(users.users.filter(u => u.access_level === Role.TRAINEE));
     } catch { /* ignore */ }
+  }
+
+  formatDates(p: ProgramRow): string {
+    const first = p.first_session_date;
+    const last = p.last_session_date;
+    if (!first) return '—';
+    if (!last || first === last) return first;
+    return `${first} – ${last}`;
   }
 
   openCreate(): void {

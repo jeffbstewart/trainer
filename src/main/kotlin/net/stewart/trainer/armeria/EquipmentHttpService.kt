@@ -85,7 +85,10 @@ class EquipmentHttpService {
         val item = Equipment.findById(equipmentId) ?: return HttpResponse.of(HttpStatus.NOT_FOUND)
         if (item.trainer_id != user.id) return HttpResponse.of(HttpStatus.FORBIDDEN)
 
-        ExerciseEquipment.findAll().filter { it.equipment_id == equipmentId }.forEach { it.delete() }
+        // Block deletion if equipment is used by any exercise
+        val usedByExercises = ExerciseEquipment.findAll().any { it.equipment_id == equipmentId }
+        if (usedByExercises) return badRequest("Cannot delete equipment that is used by an exercise")
+
         item.delete()
         return json(mapOf("ok" to true))
     }
