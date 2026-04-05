@@ -12,11 +12,14 @@ import com.linecorp.armeria.server.annotation.Get
 import com.linecorp.armeria.server.annotation.Param
 import com.linecorp.armeria.server.annotation.Post
 import net.stewart.trainer.entity.*
+import org.slf4j.LoggerFactory
 import java.time.LocalDate
 import java.time.LocalDateTime
 
 @Blocking
 class ProgramHttpService {
+
+    private val log = LoggerFactory.getLogger(ProgramHttpService::class.java)
 
     private val gson = Gson()
 
@@ -139,11 +142,14 @@ class ProgramHttpService {
                             }
                     } else emptyList()
 
+                    val subExercise = se?.substitute_exercise_id?.let { allExercises[it] }
+
                     mapOf(
                         "exercise_id" to pe.exercise_id,
                         "set_style" to se?.set_style,
                         "resistance_note" to se?.resistance_note,
-                        "substitute_name" to se?.substitute_name,
+                        "substitute_exercise_id" to se?.substitute_exercise_id,
+                        "substitute_exercise_name" to subExercise?.name,
                         "notes" to se?.notes,
                         "sets" to sets
                     )
@@ -376,7 +382,9 @@ class ProgramHttpService {
             ?: return HttpResponse.of(HttpStatus.NOT_FOUND)
 
         val body = gson.fromJson(ctx.request().aggregate().join().contentUtf8(), Map::class.java)
-        if (body.containsKey("substitute_name")) se.substitute_name = (body["substitute_name"] as? String)?.trim()?.ifEmpty { null }
+        if (body.containsKey("substitute_exercise_id")) {
+            se.substitute_exercise_id = (body["substitute_exercise_id"] as? Number)?.toLong()
+        }
         if (body.containsKey("resistance_note")) se.resistance_note = (body["resistance_note"] as? String)?.trim()?.ifEmpty { null }
         if (body.containsKey("notes")) se.notes = (body["notes"] as? String)?.trim()?.ifEmpty { null }
         se.save()

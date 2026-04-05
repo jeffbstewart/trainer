@@ -7,11 +7,13 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatSelectModule } from '@angular/material/select';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
+import { MatDialog } from '@angular/material/dialog';
 import { CdkDropList, CdkDrag, CdkDragHandle, CdkDragDrop, moveItemInArray } from '@angular/cdk/drag-drop';
+import { ExercisePickerDialogComponent, ExercisePickerData, ExercisePickerResult } from '../../shared/exercise-picker-dialog';
 
 interface ExerciseRef { id: number; name: string; sort_order: number; }
 interface SetData { id: number; round_number: number; weight: number | null; reps: number | null; unit: string; weight_direction: string | null; weight_marker: string | null; reps_marker: string | null; skipped: boolean; }
-interface SessionExerciseData { exercise_id: number; sets: SetData[]; set_style: string | null; resistance_note: string | null; substitute_name: string | null; notes: string | null; }
+interface SessionExerciseData { exercise_id: number; sets: SetData[]; set_style: string | null; resistance_note: string | null; substitute_exercise_id: number | null; substitute_exercise_name: string | null; notes: string | null; }
 interface SessionData { id: number; session_date: string | null; notes: string | null; exercises: SessionExerciseData[]; }
 interface WorkoutData { id: number; name: string; plan_type: string; exercises: ExerciseRef[]; sessions: SessionData[]; }
 interface ProgramDetail {
@@ -105,8 +107,26 @@ const WeightDirection = { UP: 'up', DOWN: 'down' } as const;
                   }
                 </thead>
                 <tbody cdkDropList [cdkDropListData]="workout" [cdkDropListDisabled]="locked()" (cdkDropListDropped)="dropExercise($event, workout)">
-                  @for (exercise of workout.exercises; track exercise.id) {
-                    <tr cdkDrag [cdkDragDisabled]="locked()">
+                  @for (exercise of workout.exercises; track exercise.id; let idx = $index) {
+                    @if (workout.sessions.length > 0) {
+                      <tr class="sub-row" [class.sub-row-empty]="!hasAnyOverride(workout, exercise.id)">
+                        <td class="sub-row-label"></td>
+                        @for (session of workout.sessions; track session.id) {
+                          <td class="sub-cell" [attr.colspan]="maxRounds(session)" (click)="openExerciseNote(session, exercise, $event)">
+                            @if (getSessionExercise(session, exercise.id); as se) {
+                              @if (se.substitute_exercise_name || se.resistance_note) {
+                                <span class="sub-text">{{ se.substitute_exercise_name ?? '' }}{{ se.substitute_exercise_name && se.resistance_note ? ' · ' : '' }}{{ se.resistance_note ?? '' }}</span>
+                              } @else {
+                                <span class="sub-text sub-add">+</span>
+                              }
+                            } @else {
+                              <span class="sub-text sub-add">+</span>
+                            }
+                          </td>
+                        }
+                      </tr>
+                    }
+                    <tr cdkDrag [cdkDragDisabled]="locked()" [class.exercise-even]="idx % 2 === 1">
                       <td class="exercise-name">
                         @if (!locked()) {
                           <mat-icon class="drag-handle exercise-drag" cdkDragHandle>drag_indicator</mat-icon>
@@ -114,17 +134,8 @@ const WeightDirection = { UP: 'up', DOWN: 'down' } as const;
                         <a [routerLink]="['/exercises', exercise.id]">{{ exercise.name }}</a>
                       </td>
                       @for (session of workout.sessions; track session.id) {
-                        @for (r of roundRange(maxRounds(session)); track r; let last = $last; let first = $first) {
+                        @for (r of roundRange(maxRounds(session)); track r; let last = $last) {
                           <td class="set-cell" [class.session-end]="last" (click)="openSetEdit(session, exercise, r)">
-                            @if (first) {
-                              @if (getSessionExercise(session, exercise.id); as se) {
-                                @if (se.substitute_name || se.resistance_note) {
-                                  <div class="sub-label" [style.width.%]="maxRounds(session) * 100" (click)="openExerciseNote(session, exercise, $event)">{{ se.substitute_name ?? '' }}{{ se.substitute_name && se.resistance_note ? ' · ' : '' }}{{ se.resistance_note ?? '' }}</div>
-                                } @else if (!locked()) {
-                                  <div class="sub-label sub-add" [style.width.%]="maxRounds(session) * 100" (click)="openExerciseNote(session, exercise, $event)">+note</div>
-                                }
-                              }
-                            }
                             @if (getSet(session, exercise.id, r); as s) {
                               @if (s.skipped) {
                                 <div class="set-box set-skipped"></div>
@@ -294,11 +305,12 @@ const WeightDirection = { UP: 'up', DOWN: 'down' } as const;
       <div class="modal-overlay" (click)="showExerciseNote.set(false)">
         <div class="modal-content" (click)="$event.stopPropagation()">
           <h3>{{ exerciseNoteName() }} — {{ exerciseNoteDate() }}</h3>
-          <mat-form-field appearance="outline" class="full-width">
-            <mat-label>Substitution</mat-label>
-            <input matInput [value]="exerciseNoteSubName()" (input)="exerciseNoteSubName.set($any($event.target).value)"
-                   placeholder="e.g. BAND PULL" />
-          </mat-form-field>
+          <div class="sub-picker-row">
+            <span class="sub-picker-label">Substitution:</span>
+            <button mat-stroked-button class="sub-picker-btn" (click)="openSubstitutePicker()">
+              {{ exerciseNoteSubName() || 'None — tap to select' }}
+            </button>
+          </div>
           <mat-form-field appearance="outline" class="full-width">
             <mat-label>Resistance note</mat-label>
             <input matInput [value]="exerciseNoteResistance()" (input)="exerciseNoteResistance.set($any($event.target).value)"
@@ -323,21 +335,22 @@ const WeightDirection = { UP: 'up', DOWN: 'down' } as const;
     .plan-type { font-size: 0.6875rem; opacity: 0.5; text-transform: uppercase; letter-spacing: 0.05em; }
     .small-btn { font-size: 0.75rem; }
 
-    .grid-container { overflow-x: auto; }
+    .grid-container { overflow-x: auto; -webkit-overflow-scrolling: touch; }
     .session-grid {
-      border-collapse: separate; border-spacing: 0; width: 100%;
+      border-collapse: separate; border-spacing: 0;
       th, td { padding: 3px 4px; border: 1px solid var(--mat-sys-outline-variant, #c4c6d0); text-align: center; font-size: 0.6875rem; }
       th { background: var(--mat-sys-surface-container, #efedf0); font-weight: 600; }
       th:first-child, td:first-child {
-        position: sticky; left: 0; z-index: 1;
+        position: -webkit-sticky; position: sticky; left: 0; z-index: 1;
         background: var(--mat-sys-surface, #fdfbff);
         border-right: 2px solid var(--mat-sys-outline, #74777f);
       }
       th:first-child { z-index: 2; background: var(--mat-sys-surface-container, #efedf0); }
     }
-    .exercise-col { text-align: left; max-width: 90px; }
-    tr:nth-child(even) td { background: rgba(76, 175, 80, 0.06); }
-    tr:nth-child(even) td:first-child { background: rgba(76, 175, 80, 0.06); }
+    .exercise-col { text-align: left; width: 120px; min-width: 80px; max-width: 120px; }
+    tr.exercise-even td { background: rgba(76, 175, 80, 0.06); }
+    tr.exercise-even td:first-child { background: var(--mat-sys-surface, #fdfbff); }
+    .sub-row td:first-child { background: var(--mat-sys-surface, #fdfbff); }
     .exercise-name {
       text-align: left; font-weight: 500; font-size: 0.625rem;
       white-space: normal; word-break: break-word; line-height: 1.2;
@@ -360,7 +373,7 @@ const WeightDirection = { UP: 'up', DOWN: 'down' } as const;
     .round-header { font-size: 0.625rem; opacity: 0.5; }
     .session-end { border-right: 2px solid var(--mat-sys-outline, #74777f) !important; }
     .set-cell {
-      padding: 2px !important; cursor: pointer; min-width: 44px; vertical-align: middle; position: relative;
+      padding: 2px !important; cursor: pointer; width: 50px; min-width: 50px; max-width: 50px; vertical-align: middle; position: relative;
       &:hover { background: var(--mat-sys-primary-container, #d7e3ff); }
       &:active { background: var(--mat-sys-primary, #005cbb); color: white; }
     }
@@ -381,13 +394,20 @@ const WeightDirection = { UP: 'up', DOWN: 'down' } as const;
         linear-gradient(to bottom right, transparent calc(50% - 0.5px), var(--mat-sys-outline-variant, #c4c6d0) 50%, transparent calc(50% + 0.5px)),
         linear-gradient(to bottom left, transparent calc(50% - 0.5px), var(--mat-sys-outline-variant, #c4c6d0) 50%, transparent calc(50% + 0.5px)) !important;
     }
-    .sub-label {
-      position: absolute; top: 0; left: 0; z-index: 1;
+    .sub-row td { padding: 0 !important; border-bottom: none !important; }
+    .sub-row-label { height: 0; }
+    .sub-row-empty .sub-cell { height: 14px; }
+    .sub-row-empty .sub-add { visibility: hidden; }
+    .sub-row-empty:hover .sub-add { visibility: visible; }
+    .sub-cell {
+      cursor: pointer; height: 16px; min-height: 16px;
       font-size: 0.5rem; font-weight: 600; color: var(--mat-sys-tertiary, #6b5778);
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-      cursor: pointer; text-align: center; pointer-events: auto;
-      background: rgba(255,255,255,0.55); border-radius: 2px;
+      text-align: center; line-height: 16px;
+      border-right: 2px solid var(--mat-sys-outline, #74777f) !important;
+      &:hover { background: var(--mat-sys-tertiary-container, #f3daff) !important; }
     }
+    .sub-text { font-size: 0.5rem; }
     .sub-add { opacity: 0.3; font-weight: 400; }
     .more-section { margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--mat-sys-outline-variant, #c4c6d0); }
     .set-empty { font-size: 0.625rem; opacity: 0.3; }
@@ -418,6 +438,9 @@ const WeightDirection = { UP: 'up', DOWN: 'down' } as const;
       h3 { margin: 0 0 1rem; }
     }
     .modal-actions { display: flex; gap: 0.5rem; margin-top: 1rem; }
+    .sub-picker-row { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; }
+    .sub-picker-label { font-size: 0.8125rem; opacity: 0.6; white-space: nowrap; }
+    .sub-picker-btn { text-align: left; min-width: 200px; }
     .spacer { flex: 1; }
   `,
 })
@@ -426,6 +449,7 @@ export class ProgramDetailComponent implements OnInit {
   readonly WeightDirection = WeightDirection;
   private readonly route = inject(ActivatedRoute);
   private readonly http = inject(HttpClient);
+  private readonly dialog = inject(MatDialog);
 
   readonly program = signal<ProgramDetail | null>(null);
   readonly locked = signal(true);
@@ -459,6 +483,7 @@ export class ProgramDetailComponent implements OnInit {
   readonly exerciseNoteExerciseId = signal(0);
   readonly exerciseNoteName = signal('');
   readonly exerciseNoteDate = signal('');
+  readonly exerciseNoteSubId = signal<number | null>(null);
   readonly exerciseNoteSubName = signal('');
   readonly exerciseNoteResistance = signal('');
 
@@ -518,6 +543,13 @@ export class ProgramDetailComponent implements OnInit {
     return session.exercises.find(e => e.exercise_id === exerciseId) ?? null;
   }
 
+  hasAnyOverride(workout: WorkoutData, exerciseId: number): boolean {
+    return workout.sessions.some(s => {
+      const se = s.exercises.find(e => e.exercise_id === exerciseId);
+      return se && (se.substitute_exercise_name || se.resistance_note);
+    });
+  }
+
   openExerciseNote(session: SessionData, exercise: ExerciseRef, event: Event): void {
     event.stopPropagation();
     const se = this.getSessionExercise(session, exercise.id);
@@ -525,16 +557,48 @@ export class ProgramDetailComponent implements OnInit {
     this.exerciseNoteExerciseId.set(exercise.id);
     this.exerciseNoteName.set(exercise.name);
     this.exerciseNoteDate.set(session.session_date ?? 'New');
-    this.exerciseNoteSubName.set(se?.substitute_name ?? '');
+    this.exerciseNoteSubId.set(se?.substitute_exercise_id ?? null);
+    this.exerciseNoteSubName.set(se?.substitute_exercise_name ?? '');
     this.exerciseNoteResistance.set(se?.resistance_note ?? '');
     this.showExerciseNote.set(true);
+  }
+
+  openSubstitutePicker(): void {
+    // Ensure available exercises are loaded
+    if (this.availableExercises().length === 0) {
+      this.loadAvailableExercises().then(() => this.showPicker());
+    } else {
+      this.showPicker();
+    }
+  }
+
+  private showPicker(): void {
+    const ref = this.dialog.open(ExercisePickerDialogComponent, {
+      width: '400px',
+      data: {
+        exercises: this.availableExercises(),
+        selectedId: this.exerciseNoteSubId(),
+        title: 'Select Substitute Exercise',
+      } satisfies ExercisePickerData,
+    });
+    ref.afterClosed().subscribe((result: ExercisePickerResult | null | undefined) => {
+      if (result === undefined) return; // dialog cancelled via backdrop/escape
+      if (result === null) {
+        // "Clear Substitution" clicked
+        this.exerciseNoteSubId.set(null);
+        this.exerciseNoteSubName.set('');
+      } else {
+        this.exerciseNoteSubId.set(result.exerciseId);
+        this.exerciseNoteSubName.set(result.exerciseName);
+      }
+    });
   }
 
   async submitExerciseNote(): Promise<void> {
     await firstValueFrom(this.http.post(
       `/api/v1/sessions/${this.exerciseNoteSessionId()}/exercises/${this.exerciseNoteExerciseId()}`,
       {
-        substitute_name: this.exerciseNoteSubName().trim() || null,
+        substitute_exercise_id: this.exerciseNoteSubId(),
         resistance_note: this.exerciseNoteResistance().trim() || null,
       }
     ));
@@ -557,10 +621,7 @@ export class ProgramDetailComponent implements OnInit {
     await this.refresh();
   }
 
-  async openAddExercise(workout: WorkoutData): Promise<void> {
-    this.addExerciseWorkoutId.set(workout.id);
-    this.addExerciseWorkoutName.set(workout.name);
-    this.selectedExerciseId.set(null);
+  private async loadAvailableExercises(): Promise<void> {
     try {
       const p = this.program();
       const params: Record<string, string> = {};
@@ -569,6 +630,13 @@ export class ProgramDetailComponent implements OnInit {
         '/api/v1/exercises', { params }));
       this.availableExercises.set(d.exercises);
     } catch { /* ignore */ }
+  }
+
+  async openAddExercise(workout: WorkoutData): Promise<void> {
+    this.addExerciseWorkoutId.set(workout.id);
+    this.addExerciseWorkoutName.set(workout.name);
+    this.selectedExerciseId.set(null);
+    await this.loadAvailableExercises();
     this.showAddExercise.set(true);
   }
 
