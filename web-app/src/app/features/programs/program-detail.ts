@@ -128,10 +128,12 @@ const WeightDirection = { UP: 'up', DOWN: 'down' } as const;
                     }
                     <tr cdkDrag [cdkDragDisabled]="locked()" [class.exercise-even]="idx % 2 === 1">
                       <td class="exercise-name">
-                        @if (!locked()) {
-                          <mat-icon class="drag-handle exercise-drag" cdkDragHandle>drag_indicator</mat-icon>
-                        }
-                        <a [routerLink]="['/exercises', exercise.id]">{{ exercise.name }}</a>
+                        <div class="exercise-name-inner">
+                          @if (!locked()) {
+                            <mat-icon class="drag-handle exercise-drag" cdkDragHandle>drag_indicator</mat-icon>
+                          }
+                          <a [routerLink]="['/exercises', exercise.id]">{{ exercise.name }}</a>
+                        </div>
                       </td>
                       @for (session of workout.sessions; track session.id) {
                         @for (r of roundRange(maxRounds(session)); track r; let last = $last) {
@@ -425,7 +427,7 @@ const WeightDirection = { UP: 'up', DOWN: 'down' } as const;
 
     .drag-handle { cursor: grab; opacity: 0.4; font-size: 20px; touch-action: none; }
     .drag-handle:active { cursor: grabbing; }
-    .exercise-name { display: flex; align-items: center; gap: 4px; }
+    .exercise-name-inner { display: flex; align-items: center; gap: 4px; }
     .exercise-drag { font-size: 16px; flex-shrink: 0; }
     .cdk-drag-preview { background: var(--mat-sys-surface-container-high, #e9e7eb); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); padding: 8px; }
     .cdk-drag-placeholder { opacity: 0.3; }
