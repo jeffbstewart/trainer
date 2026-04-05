@@ -40,7 +40,7 @@ jobs:
           cache-dependency-path: web-app/package-lock.json
 
       - name: Build Kotlin backend
-        run: ./gradlew build
+        run: ./gradlew build installDist
 
       - name: Build Angular frontend
         working-directory: web-app
