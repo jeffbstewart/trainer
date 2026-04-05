@@ -50,4 +50,4 @@ jobs:
 
       - name: Build Docker image
         run: |
-          docker build -t trainer:ci .
+          docker build -f Dockerfile.prebuilt -t trainer:ci .
