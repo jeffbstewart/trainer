@@ -6,8 +6,12 @@ import com.linecorp.armeria.common.HttpStatus
 import com.linecorp.armeria.common.MediaType
 import com.linecorp.armeria.server.ServiceRequestContext
 import com.linecorp.armeria.server.annotation.Blocking
+import com.linecorp.armeria.server.annotation.Delete
+import com.linecorp.armeria.server.annotation.Get
+import com.linecorp.armeria.server.annotation.Param
 import com.linecorp.armeria.server.annotation.Post
 import net.stewart.auth.PasswordService
+import net.stewart.auth.WebAuthnRegisterResult
 import net.stewart.trainer.service.LegalService
 import net.stewart.trainer.service.ServiceRegistry
 import java.time.LocalDateTime
@@ -48,8 +52,77 @@ class AccountHttpService {
         user.save()
 
         ServiceRegistry.sessions.revokeAllForUser(user.id!!)
+        ServiceRegistry.webAuthnService?.deleteAllCredentials(user.id!!)
 
         return json(mapOf("ok" to true))
+    }
+
+    // --- Passkey management ---
+
+    @Post("/api/v1/auth/passkeys/registration-options")
+    fun passkeyRegistrationOptions(ctx: ServiceRequestContext): HttpResponse {
+        val (user, err) = AuthDecorator.requireUser(ctx)
+        if (user == null) return err!!
+        val wa = ServiceRegistry.webAuthnService
+            ?: return badRequest("Passkeys not configured")
+
+        val opts = wa.generateRegistrationOptions(user.id!!, user.username, user.username)
+        return json(mapOf("challenge" to opts.signedChallenge, "options" to opts.optionsJson))
+    }
+
+    @Post("/api/v1/auth/passkeys/register")
+    fun passkeyRegister(ctx: ServiceRequestContext): HttpResponse {
+        val (user, err) = AuthDecorator.requireUser(ctx)
+        if (user == null) return err!!
+        val wa = ServiceRegistry.webAuthnService
+            ?: return badRequest("Passkeys not configured")
+
+        val body = gson.fromJson(ctx.request().aggregate().join().contentUtf8(), Map::class.java)
+        val challenge = body["challenge"] as? String ?: return badRequest("challenge required")
+        @Suppress("UNCHECKED_CAST")
+        val credential = body["credential"] as? Map<String, Any> ?: return badRequest("credential required")
+        @Suppress("UNCHECKED_CAST")
+        val response = credential["response"] as? Map<String, Any> ?: return badRequest("credential.response required")
+        @Suppress("UNCHECKED_CAST")
+        val transports = (response["transports"] as? List<String>)?.joinToString(",")
+        val displayName = (body["display_name"] as? String)?.take(255) ?: "Passkey"
+
+        return when (val result = wa.verifyRegistration(
+            signedChallenge = challenge,
+            credentialId = credential["id"] as? String ?: return badRequest("credential.id required"),
+            clientDataJSON = response["clientDataJSON"] as? String ?: return badRequest("clientDataJSON required"),
+            attestationObject = response["attestationObject"] as? String ?: return badRequest("attestationObject required"),
+            transports = transports,
+            displayName = displayName,
+            userId = user.id!!,
+        )) {
+            is WebAuthnRegisterResult.Success -> json(mapOf("ok" to true))
+            is WebAuthnRegisterResult.Failed -> badRequest(result.reason)
+        }
+    }
+
+    @Get("/api/v1/auth/passkeys")
+    fun listPasskeys(ctx: ServiceRequestContext): HttpResponse {
+        val (user, err) = AuthDecorator.requireUser(ctx)
+        if (user == null) return err!!
+        val wa = ServiceRegistry.webAuthnService
+            ?: return json(mapOf("passkeys" to emptyList<Any>()))
+
+        val passkeys = wa.listCredentials(user.id!!).map { cred ->
+            mapOf("id" to cred.id, "display_name" to cred.displayName,
+                "created_at" to cred.createdAt?.toString(), "last_used_at" to cred.lastUsedAt?.toString())
+        }
+        return json(mapOf("passkeys" to passkeys))
+    }
+
+    @Delete("/api/v1/auth/passkeys/{credentialId}")
+    fun deletePasskey(ctx: ServiceRequestContext, @Param("credentialId") credentialId: Long): HttpResponse {
+        val (user, err) = AuthDecorator.requireUser(ctx)
+        if (user == null) return err!!
+        val wa = ServiceRegistry.webAuthnService ?: return HttpResponse.of(HttpStatus.NOT_FOUND)
+
+        return if (wa.deleteCredential(credentialId, user.id!!)) json(mapOf("ok" to true))
+        else HttpResponse.of(HttpStatus.NOT_FOUND)
     }
 
     @Post("/api/v1/auth/accept-legal")

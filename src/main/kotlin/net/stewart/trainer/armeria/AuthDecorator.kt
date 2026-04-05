@@ -95,15 +95,18 @@ class AuthDecorator : DecoratingHttpServiceFunction {
         val user = authUser?.let { AppUser.findById(it.id) }
         if (user != null) {
             val path = ctx.path()
-            val allowedPaths = setOf("/api/v1/auth/change-password", "/api/v1/auth/logout", "/api/v1/auth/accept-legal")
+            val allowedPaths = setOf(
+                "/api/v1/auth/change-password", "/api/v1/auth/logout", "/api/v1/auth/accept-legal",
+            )
+            fun isAllowed(p: String) = p in allowedPaths || p.startsWith("/api/v1/auth/passkeys")
 
             // Password change required — block everything except password change and logout
-            if (user.must_change_password && path !in allowedPaths) {
+            if (user.must_change_password && !isAllowed(path)) {
                 return HttpResponse.of(HttpStatus.FORBIDDEN)
             }
 
             // Legal compliance — block everything except legal acceptance, password change, and logout
-            if (!user.must_change_password && !LegalService.isCompliant(user) && path !in allowedPaths) {
+            if (!user.must_change_password && !LegalService.isCompliant(user) && !isAllowed(path)) {
                 return HttpResponse.of(HttpStatus.FORBIDDEN)
             }
 

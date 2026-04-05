@@ -1,18 +1,27 @@
 import { inject, Injectable, signal, computed } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
+import { WebAuthnService } from './webauthn.service';
 
 export interface DiscoverResponse {
   setup_required: boolean;
+  passkeys_available?: boolean;
   terms_of_use_url?: string;
   privacy_policy_url?: string;
   terms_of_use_version?: number;
   privacy_policy_version?: number;
 }
 
+interface LoginResponse {
+  ok: boolean;
+  password_change_required?: boolean;
+  legal_acceptance_required?: boolean;
+}
+
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private readonly http = inject(HttpClient);
+  private readonly webauthn = inject(WebAuthnService);
   private readonly authenticated = signal(false);
 
   readonly isAuthenticated = computed(() => this.authenticated());
@@ -21,10 +30,16 @@ export class AuthService {
     return firstValueFrom(this.http.get<DiscoverResponse>('/api/v1/auth/discover'));
   }
 
-  async login(username: string, password: string): Promise<{ ok: boolean; password_change_required?: boolean; legal_acceptance_required?: boolean }> {
+  async login(username: string, password: string): Promise<LoginResponse> {
     const response = await firstValueFrom(
-      this.http.post<{ ok: boolean; password_change_required?: boolean; legal_acceptance_required?: boolean }>('/api/v1/auth/login', { username, password })
+      this.http.post<LoginResponse>('/api/v1/auth/login', { username, password })
     );
+    if (response.ok) this.authenticated.set(true);
+    return response;
+  }
+
+  async loginWithPasskey(): Promise<LoginResponse> {
+    const response = await this.webauthn.performAuthentication();
     if (response.ok) this.authenticated.set(true);
     return response;
   }

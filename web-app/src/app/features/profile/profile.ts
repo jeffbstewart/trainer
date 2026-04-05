@@ -7,11 +7,14 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { AuthService } from '../../core/auth.service';
+import { WebAuthnService, Passkey } from '../../core/webauthn.service';
 
 interface Profile {
   id: number; username: string; role: string; access_level: number;
   is_impersonating: boolean; real_admin_username?: string;
+  passkeys_enabled: boolean;
 }
 
 interface Session {
@@ -22,7 +25,7 @@ interface Session {
 @Component({
   selector: 'app-profile',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [MatCardModule, MatButtonModule, MatIconModule, MatFormFieldModule, MatInputModule],
+  imports: [MatCardModule, MatButtonModule, MatIconModule, MatFormFieldModule, MatInputModule, MatProgressSpinnerModule],
   template: `
     <h2>Profile</h2>
 
@@ -61,6 +64,31 @@ interface Session {
         </button>
       </div>
 
+      @if (p.passkeys_enabled && webauthnSupported()) {
+        <h3>Passkeys</h3>
+        @if (passkeys().length > 0) {
+          <div class="session-list">
+            @for (pk of passkeys(); track pk.id) {
+              <div class="session-row">
+                <span class="session-ua">{{ pk.display_name }}</span>
+                <span class="session-meta">
+                  Created: {{ pk.created_at ?? '—' }}
+                  @if (pk.last_used_at) { · Last used: {{ pk.last_used_at }} }
+                </span>
+                <button mat-stroked-button class="revoke-btn" (click)="deletePasskey(pk)">Delete</button>
+              </div>
+            }
+          </div>
+        } @else {
+          <p class="hint-text">No passkeys registered. Register one for faster sign-in.</p>
+        }
+        <button mat-stroked-button [disabled]="passkeyRegistering()" (click)="registerPasskey()">
+          @if (passkeyRegistering()) { <mat-spinner diameter="16" /> }
+          <mat-icon>fingerprint</mat-icon> Register new passkey
+        </button>
+        @if (passkeyError()) { <p class="error-text">{{ passkeyError() }}</p> }
+      }
+
       <h3>Active Sessions</h3>
       <button mat-stroked-button color="warn" (click)="revokeAll()">Revoke All Sessions</button>
       <div class="session-list">
@@ -89,6 +117,7 @@ interface Session {
     .password-form { max-width: 400px; }
     .error-text { color: #f44336; font-size: 0.8125rem; }
     .success-text { color: #4caf50; font-size: 0.8125rem; }
+    .hint-text { font-size: 0.8125rem; opacity: 0.5; }
     .session-list { margin-top: 0.5rem; }
     .session-row {
       display: flex; align-items: center; gap: 0.75rem; padding: 8px 0;
@@ -103,9 +132,14 @@ export class ProfileComponent implements OnInit {
   private readonly http = inject(HttpClient);
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
+  private readonly webauthnService = inject(WebAuthnService);
 
   readonly profile = signal<Profile | null>(null);
   readonly sessions = signal<Session[]>([]);
+  readonly passkeys = signal<Passkey[]>([]);
+  readonly webauthnSupported = signal(false);
+  readonly passkeyRegistering = signal(false);
+  readonly passkeyError = signal('');
   readonly pwCurrent = signal('');
   readonly pwNew = signal('');
   readonly pwConfirm = signal('');
@@ -117,11 +151,16 @@ export class ProfileComponent implements OnInit {
   }
 
   async ngOnInit(): Promise<void> {
+    this.webauthnSupported.set(this.webauthnService.isSupported());
     try {
       const p = await firstValueFrom(this.http.get<Profile>('/api/v1/profile'));
       this.profile.set(p);
-      const data = await firstValueFrom(this.http.get<{ sessions: Session[] }>(`/api/v1/users/${p.id}/sessions`));
-      this.sessions.set(data.sessions);
+      const [sessionData, passkeyData] = await Promise.all([
+        firstValueFrom(this.http.get<{ sessions: Session[] }>(`/api/v1/users/${p.id}/sessions`)),
+        this.webauthnService.listPasskeys().catch(() => [] as Passkey[]),
+      ]);
+      this.sessions.set(sessionData.sessions);
+      this.passkeys.set(passkeyData);
     } catch { /* ignore */ }
   }
 
@@ -138,6 +177,31 @@ export class ProfileComponent implements OnInit {
         this.pwError.set(r.error ?? 'Failed');
       }
     } catch { this.pwError.set('Request failed'); }
+  }
+
+  async registerPasskey(): Promise<void> {
+    this.passkeyRegistering.set(true);
+    this.passkeyError.set('');
+    try {
+      const displayName = prompt('Name for this passkey (optional):') || 'Passkey';
+      await this.webauthnService.performRegistration(displayName);
+      this.passkeys.set(await this.webauthnService.listPasskeys());
+    } catch (e: unknown) {
+      if (e instanceof DOMException && e.name === 'NotAllowedError') {
+        this.passkeyRegistering.set(false);
+        return;
+      }
+      const httpErr = e as { error?: { error?: string } };
+      this.passkeyError.set(httpErr.error?.error ?? 'Registration failed');
+    } finally {
+      this.passkeyRegistering.set(false);
+    }
+  }
+
+  async deletePasskey(passkey: Passkey): Promise<void> {
+    if (!confirm(`Delete passkey "${passkey.display_name}"?`)) return;
+    await this.webauthnService.deletePasskey(passkey.id);
+    this.passkeys.update(list => list.filter(p => p.id !== passkey.id));
   }
 
   async revokeSession(id: number): Promise<void> {

@@ -12,6 +12,7 @@ import com.linecorp.armeria.server.annotation.Post
 import net.stewart.auth.LoginResult
 import net.stewart.auth.PasswordService
 import net.stewart.auth.SessionService
+import net.stewart.auth.WebAuthnAuthResult
 import net.stewart.trainer.entity.AppConfig
 import net.stewart.trainer.entity.AppUser
 import net.stewart.trainer.service.LegalService
@@ -34,6 +35,8 @@ class AuthHttpService {
         if (LegalService.privacyPolicyUrl != null) result["privacy_policy_url"] = LegalService.privacyPolicyUrl!!
         if (LegalService.requiredTermsOfUseVersion > 0) result["terms_of_use_version"] = LegalService.requiredTermsOfUseVersion
         if (LegalService.requiredPrivacyPolicyVersion > 0) result["privacy_policy_version"] = LegalService.requiredPrivacyPolicyVersion
+        val wa = ServiceRegistry.webAuthnService
+        if (wa != null) result["passkeys_available"] = wa.anyPasskeysExist()
         return json(result)
     }
 
@@ -120,6 +123,59 @@ class AuthHttpService {
             .content(MediaType.JSON_UTF_8, gson.toJson(mapOf("ok" to true)))
             .header("Set-Cookie", ServiceRegistry.sessions.buildCookieHeader(token, secure))
             .build()
+    }
+
+    // --- Passkey authentication ---
+
+    @Post("/api/v1/auth/passkey/authentication-options")
+    fun passkeyAuthenticationOptions(): HttpResponse {
+        val wa = ServiceRegistry.webAuthnService
+            ?: return json(mapOf("error" to "Passkeys not configured"), HttpStatus.SERVICE_UNAVAILABLE)
+        val opts = wa.generateAuthenticationOptions()
+        return json(mapOf("challenge" to opts.signedChallenge, "options" to opts.optionsJson))
+    }
+
+    @Post("/api/v1/auth/passkey/authenticate")
+    fun passkeyAuthenticate(ctx: ServiceRequestContext): HttpResponse {
+        val wa = ServiceRegistry.webAuthnService
+            ?: return json(mapOf("error" to "Passkeys not configured"), HttpStatus.SERVICE_UNAVAILABLE)
+
+        val body = gson.fromJson(ctx.request().aggregate().join().contentUtf8(), Map::class.java)
+        val challenge = body["challenge"] as? String ?: return badRequest("challenge required")
+        @Suppress("UNCHECKED_CAST")
+        val credential = body["credential"] as? Map<String, Any> ?: return badRequest("credential required")
+        @Suppress("UNCHECKED_CAST")
+        val response = credential["response"] as? Map<String, Any> ?: return badRequest("credential.response required")
+
+        val result = wa.verifyAuthentication(
+            signedChallenge = challenge,
+            credentialId = credential["id"] as? String ?: return badRequest("credential.id required"),
+            clientDataJSON = response["clientDataJSON"] as? String ?: return badRequest("clientDataJSON required"),
+            authenticatorData = response["authenticatorData"] as? String ?: return badRequest("authenticatorData required"),
+            signature = response["signature"] as? String ?: return badRequest("signature required"),
+            userHandle = response["userHandle"] as? String,
+        )
+
+        return when (result) {
+            is WebAuthnAuthResult.Success -> {
+                val appUser = AppUser.findById(result.user.id)!!
+                val ua = ctx.request().headers().get("user-agent") ?: "unknown"
+                val token = ServiceRegistry.sessions.createSession(result.user, ua)
+                val secure = ctx.request().scheme() == "https"
+
+                HttpResponse.builder()
+                    .status(HttpStatus.OK)
+                    .content(MediaType.JSON_UTF_8, gson.toJson(mapOf(
+                        "ok" to true,
+                        "password_change_required" to appUser.must_change_password,
+                        "legal_acceptance_required" to !LegalService.isCompliant(appUser),
+                    )))
+                    .header("Set-Cookie", ServiceRegistry.sessions.buildCookieHeader(token, secure))
+                    .build()
+            }
+            is WebAuthnAuthResult.Failed ->
+                json(mapOf("error" to "Passkey authentication failed"), HttpStatus.UNAUTHORIZED)
+        }
     }
 
     @Post("/api/v1/auth/logout")

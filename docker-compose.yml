@@ -10,6 +10,13 @@ services:
     environment:
       - H2_PASSWORD=${H2_PASSWORD:?Set H2_PASSWORD in .env}
       - H2_FILE_PASSWORD=${H2_FILE_PASSWORD:?Set H2_FILE_PASSWORD in .env}
+      # WebAuthn/passkey support (optional — omit to disable passkeys)
+      # WEBAUTHN_RP_ID: domain users access the site from (no protocol, no port)
+      # WEBAUTHN_RP_ORIGIN: full origin including port if non-standard (e.g., https://trainer.example.com:9090)
+      # WEBAUTHN_RP_NAME: display name in browser passkey dialog (default: "Trainer")
+      - WEBAUTHN_RP_ID=${WEBAUTHN_RP_ID:-}
+      - WEBAUTHN_RP_ORIGIN=${WEBAUTHN_RP_ORIGIN:-}
+      - WEBAUTHN_RP_NAME=${WEBAUTHN_RP_NAME:-Trainer}
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8081/health"]
       interval: 30s
