@@ -18,13 +18,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: jeffbstewart/h2-kotlin-toolkit
-          path: ../h2-kotlin-toolkit
+          path: h2-kotlin-toolkit
 
       - name: Checkout auth-kotlin-toolkit
         uses: actions/checkout@v4
         with:
           repository: jeffbstewart/auth-kotlin-toolkit
-          path: ../auth-kotlin-toolkit
+          path: auth-kotlin-toolkit
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
