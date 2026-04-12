@@ -560,11 +560,11 @@ const WeightDirection = { UP: 'up', DOWN: 'down' } as const;
     .spacer { flex: 1; }
 
     /* Focused workout view */
-    :host(.focused) { display: block; margin: -1.5rem; }
+    :host(.focused) { display: block; margin: -1.5rem; overflow: hidden; }
     .focus-header { display: flex; align-items: center; gap: 0.25rem; padding: 0.25rem 0.5rem; background: var(--mat-sys-surface-container, #efedf0); }
     .focus-title { font-weight: 600; font-size: 0.875rem; }
     .focus-meta { font-size: 0.75rem; opacity: 0.5; }
-    .focus-grid { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .focus-grid { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100vw; }
   `,
 })
 export class ProgramDetailComponent implements OnInit {
@@ -682,9 +682,20 @@ export class ProgramDetailComponent implements OnInit {
     const dx = e.changedTouches[0].clientX - this.touchStartX;
     const dy = e.changedTouches[0].clientY - this.touchStartY;
     if (Math.abs(dx) < 80 || Math.abs(dy) > Math.abs(dx) * 0.5) return;
+    if ((e.target as Element)?.closest?.('.modal-overlay, input, textarea, select')) return;
     const focused = !!this.focusedWorkoutId();
-    if (!focused && (e.target as Element)?.closest?.('.modal-overlay, input, textarea, select, .grid-container')) return;
-    if (focused && (e.target as Element)?.closest?.('.modal-overlay, input, textarea, select')) return;
+    if (!focused && (e.target as Element)?.closest?.('.grid-container')) return;
+    if (focused && (e.target as Element)?.closest?.('.focus-grid')) {
+      // On the grid: only navigate at scroll edges
+      const grid = document.querySelector('.focus-grid');
+      if (grid) {
+        const atLeft = grid.scrollLeft <= 1;
+        const atRight = grid.scrollLeft + grid.clientWidth >= grid.scrollWidth - 1;
+        if (dx > 0 && !atLeft) return;
+        if (dx < 0 && !atRight) return;
+      }
+    }
+    // Below the grid (or at edge): navigate unconditionally
     this.navigateAdjacent(dx > 0 ? 'prev' : 'next');
   }
 
