@@ -146,14 +146,17 @@ const WeightDirection = { UP: 'up', DOWN: 'down' } as const;
         <button mat-icon-button (click)="locked.set(!locked())" [title]="locked() ? 'Unlock editing' : 'Lock editing'">
           <mat-icon>{{ locked() ? 'lock' : 'lock_open' }}</mat-icon>
         </button>
+        @if (p.sequence) {
+          <a mat-stroked-button [routerLink]="['/programs', p.id, 'plan-next']">
+            <mat-icon>skip_next</mat-icon> Plan
+          </a>
+        }
+        @if (p.workouts.length < 4) {
+          <button mat-stroked-button (click)="openAddWorkout()">
+            <mat-icon>add</mat-icon> Add
+          </button>
+        }
       </div>
-
-      <!-- Add Workout button -->
-      @if (p.workouts.length < 4) {
-        <button mat-stroked-button (click)="openAddWorkout()">
-          <mat-icon>add</mat-icon> Add Workout
-        </button>
-      }
 
       <!-- Workout grids -->
       <div cdkDropList [cdkDropListDisabled]="locked()" (cdkDropListDropped)="dropWorkout($event)">
@@ -171,7 +174,7 @@ const WeightDirection = { UP: 'up', DOWN: 'down' } as const;
               </button>
             }
             <button mat-stroked-button class="small-btn" (click)="addSession(workout)">
-              <mat-icon>event</mat-icon> New Session
+              <mat-icon>event</mat-icon> +Session
             </button>
             <a mat-stroked-button class="small-btn" [routerLink]="['/programs', p.id, 'workout', workout.id]">
               <mat-icon>fullscreen</mat-icon> Focus
@@ -908,6 +911,10 @@ export class ProgramDetailComponent implements OnInit {
       `/api/v1/programs/${this.programId}/workouts/${workout.id}/sessions`, {}
     ));
     await this.refresh();
+    setTimeout(() => {
+      const selector = this.focusedWorkoutId() ? '.focus-grid' : '.grid-container';
+      document.querySelectorAll(selector).forEach(el => el.scrollTo({ left: el.scrollWidth, behavior: 'smooth' }));
+    });
   }
 
   async updateSessionDate(session: SessionData, date: string): Promise<void> {

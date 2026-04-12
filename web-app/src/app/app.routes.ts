@@ -35,6 +35,7 @@ export const routes: Routes = [
       { path: 'programs', loadComponent: () => import('./features/programs/programs').then(m => m.ProgramsComponent) },
       { path: 'programs/:programId', loadComponent: () => import('./features/programs/program-detail').then(m => m.ProgramDetailComponent) },
       { path: 'programs/:programId/workout/:workoutId', loadComponent: () => import('./features/programs/program-detail').then(m => m.ProgramDetailComponent) },
+      { path: 'programs/:programId/plan-next', loadComponent: () => import('./features/programs/plan-next').then(m => m.PlanNextComponent) },
     ],
   },
 ];

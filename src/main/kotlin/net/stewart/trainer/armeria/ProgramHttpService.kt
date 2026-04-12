@@ -524,6 +524,134 @@ class ProgramHttpService {
         return json(mapOf("ok" to true))
     }
 
+    /** Get planning context for the next program based on current one. */
+    @Get("/api/v1/programs/{programId}/plan-next")
+    fun planNext(ctx: ServiceRequestContext, @Param("programId") programId: Long): HttpResponse {
+        val (user, err) = AuthDecorator.requireTrainer(ctx)
+        if (user == null) return err!!
+
+        val program = Program.findById(programId) ?: return HttpResponse.of(HttpStatus.NOT_FOUND)
+        if (program.trainer_id != user.id) return HttpResponse.of(HttpStatus.FORBIDDEN)
+
+        val allExercises = Exercise.findAll().associateBy { it.id }
+        val allPlanExercises = WorkoutPlanExercise.findAll()
+
+        // Find recent sibling programs (same trainee, has sequence), sorted by sequence desc
+        val siblings = Program.findAll()
+            .filter { it.trainee_id == program.trainee_id && it.trainer_id == user.id && it.sequence != null }
+            .sortedByDescending { it.sequence }
+            .take(5)
+
+        // Next sequence: increment the current program's sequence
+        val nextSequence = program.sequence?.let {
+            val num = it.toLongOrNull()
+            if (num != null) (num + 1).toString() else null
+        }
+
+        // For each workout slot in the current program, gather exercise history across siblings
+        val currentWorkouts = WorkoutPlan.findAll()
+            .filter { it.program_id == programId }
+            .sortedBy { it.sort_order }
+
+        val siblingWorkouts = siblings.associate { sib ->
+            sib.id!! to WorkoutPlan.findAll()
+                .filter { it.program_id == sib.id }
+                .sortedBy { it.sort_order }
+        }
+
+        val workoutPlans = currentWorkouts.mapIndexed { i, wp ->
+            // Gather exercises from the equivalent slot across recent programs
+            val history = siblings.map { sib ->
+                val equivWp = siblingWorkouts[sib.id]?.getOrNull(i)
+                val exercises = if (equivWp != null) {
+                    allPlanExercises
+                        .filter { it.workout_plan_id == equivWp.id }
+                        .sortedBy { it.sort_order }
+                        .map { pe ->
+                            val ex = allExercises[pe.exercise_id]
+                            mapOf("id" to pe.exercise_id, "name" to (ex?.name ?: "Unknown"))
+                        }
+                } else emptyList()
+                mapOf(
+                    "program_id" to sib.id,
+                    "sequence" to sib.sequence,
+                    "exercises" to exercises
+                )
+            }
+            mapOf(
+                "name" to wp.name,
+                "plan_type" to wp.plan_type,
+                "history" to history
+            )
+        }
+
+        return json(mapOf(
+            "trainee_id" to program.trainee_id,
+            "trainee_name" to (AppUser.findById(program.trainee_id)?.username ?: "Unknown"),
+            "source_program_id" to program.id,
+            "source_program_name" to program.name,
+            "next_sequence" to nextSequence,
+            "workouts" to workoutPlans
+        ))
+    }
+
+    /** Create a new program from the planning view. */
+    @Post("/api/v1/programs/{programId}/plan-next")
+    fun createPlanNext(ctx: ServiceRequestContext, @Param("programId") programId: Long): HttpResponse {
+        val (user, err) = AuthDecorator.requireTrainer(ctx)
+        if (user == null) return err!!
+
+        val program = Program.findById(programId) ?: return HttpResponse.of(HttpStatus.NOT_FOUND)
+        if (program.trainer_id != user.id) return HttpResponse.of(HttpStatus.FORBIDDEN)
+
+        val body = gson.fromJson(ctx.request().aggregate().join().contentUtf8(), Map::class.java)
+        val name = (body["name"] as? String)?.trim() ?: return badRequest("name required")
+        val sequence = (body["sequence"] as? String)?.trim()
+
+        @Suppress("UNCHECKED_CAST")
+        val workouts = body["workouts"] as? List<Map<String, Any>> ?: return badRequest("workouts required")
+
+        // Create the program
+        val newProgram = Program(
+            trainee_id = program.trainee_id,
+            trainer_id = user.id!!,
+            name = name,
+            sequence = sequence,
+            started_at = LocalDate.now(),
+            created_at = LocalDateTime.now()
+        )
+        newProgram.save()
+
+        // Create each workout and its exercises
+        for ((sortOrder, w) in workouts.withIndex()) {
+            val wpName = (w["name"] as? String)?.trim() ?: continue
+            val planType = (w["plan_type"] as? String)?.uppercase() ?: "CUSTOM"
+            @Suppress("UNCHECKED_CAST")
+            val exerciseIds = (w["exercise_ids"] as? List<Number>)?.map { it.toLong() } ?: emptyList()
+
+            val wp = WorkoutPlan(
+                program_id = newProgram.id!!,
+                trainee_id = program.trainee_id,
+                trainer_id = user.id!!,
+                name = wpName,
+                plan_type = planType,
+                sort_order = sortOrder,
+                created_at = LocalDateTime.now()
+            )
+            wp.save()
+
+            for ((exOrder, exId) in exerciseIds.withIndex()) {
+                WorkoutPlanExercise(
+                    workout_plan_id = wp.id!!,
+                    exercise_id = exId,
+                    sort_order = exOrder
+                ).save()
+            }
+        }
+
+        return json(mapOf("ok" to true, "id" to newProgram.id))
+    }
+
     private fun json(data: Any, status: HttpStatus = HttpStatus.OK): HttpResponse =
         HttpResponse.of(status, MediaType.JSON_UTF_8, gson.toJson(data))
 

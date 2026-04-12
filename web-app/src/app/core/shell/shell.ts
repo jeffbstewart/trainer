@@ -97,7 +97,8 @@ import { Role } from '../roles';
       mat-icon { font-size: 20px; width: 20px; height: 20px; }
       button { margin-left: auto; }
     }
-    .shell-container { height: 100vh; }
+    :host { display: flex; flex-direction: column; height: 100dvh; }
+    .shell-container { flex: 1; overflow: hidden; }
     .sidenav { width: 260px; }
     .nav-section {
       font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.05em;
