@@ -1,5 +1,5 @@
-import { Component, inject, signal, viewChild, ElementRef, OnInit, ChangeDetectionStrategy } from '@angular/core';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { Component, inject, signal, viewChild, ElementRef, OnInit, ChangeDetectionStrategy, HostListener } from '@angular/core';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { MatButtonModule } from '@angular/material/button';
@@ -20,6 +20,7 @@ interface ProgramDetail {
   id: number; name: string; sequence: string | null;
   trainee_id: number; trainee_name: string; trainer_id: number;
   started_at: string | null; ended_at: string | null;
+  prev_program_id: number | null; next_program_id: number | null;
   workouts: WorkoutData[];
 }
 interface AvailableExercise { id: number; name: string; }
@@ -35,6 +36,13 @@ const WeightDirection = { UP: 'up', DOWN: 'down' } as const;
     @if (program(); as p) {
       <div class="back-row">
         <a mat-button routerLink="/programs"><mat-icon>arrow_back</mat-icon> All Programs</a>
+        <span class="spacer"></span>
+        @if (p.prev_program_id) {
+          <a mat-icon-button [routerLink]="['/programs', p.prev_program_id]" title="Previous program"><mat-icon>chevron_left</mat-icon></a>
+        }
+        @if (p.next_program_id) {
+          <a mat-icon-button [routerLink]="['/programs', p.next_program_id]" title="Next program"><mat-icon>chevron_right</mat-icon></a>
+        }
       </div>
 
       <div class="program-header">
@@ -295,6 +303,13 @@ const WeightDirection = { UP: 'up', DOWN: 'down' } as const;
                 <button mat-icon-button [class.direction-active]="setEditDirection() === WeightDirection.DOWN" (click)="toggleDirection(WeightDirection.DOWN)" title="Less weight">
                   <mat-icon>arrow_downward</mat-icon>
                 </button>
+                <span class="direction-spacer"></span>
+                <button mat-icon-button (click)="copySet()" title="Copy set values">
+                  <mat-icon>content_copy</mat-icon>
+                </button>
+                <button mat-icon-button (click)="pasteSet()" [disabled]="!setClipboard()" title="Paste set values">
+                  <mat-icon>content_paste</mat-icon>
+                </button>
               </div>
             </div>
           }
@@ -329,7 +344,7 @@ const WeightDirection = { UP: 'up', DOWN: 'down' } as const;
   styles: `
     h2 { margin: 0; }
     h3 { margin: 0; }
-    .back-row { margin-bottom: 0.5rem; }
+    .back-row { margin-bottom: 0.5rem; display: flex; align-items: center; }
     .program-header { margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
     .meta { font-size: 0.8125rem; opacity: 0.5; }
     .workout-section { margin-top: 1.5rem; }
@@ -450,6 +465,7 @@ export class ProgramDetailComponent implements OnInit {
   readonly WeightUnit = WeightUnit;
   readonly WeightDirection = WeightDirection;
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   private readonly http = inject(HttpClient);
   private readonly dialog = inject(MatDialog);
 
@@ -477,6 +493,7 @@ export class ProgramDetailComponent implements OnInit {
   readonly setEditRepsMarker = signal('');
   readonly setEditSkipped = signal(false);
   readonly setEditMore = signal(false);
+  readonly setClipboard = signal<{ weight: string; reps: string; unit: string; direction: string | null; weightMarker: string; repsMarker: string } | null>(null);
   private readonly weightInput = viewChild<ElementRef>('weightInput');
 
   // Exercise note dialog (substitution / annotation)
@@ -505,6 +522,44 @@ export class ProgramDetailComponent implements OnInit {
       this.program.set(null);
       await this.refresh();
     });
+  }
+
+  @HostListener('window:keydown.ArrowLeft')
+  onArrowLeft(): void {
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    const id = this.program()?.prev_program_id;
+    if (id) this.router.navigate(['/programs', id]);
+  }
+
+  @HostListener('window:keydown.ArrowRight')
+  onArrowRight(): void {
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    const id = this.program()?.next_program_id;
+    if (id) this.router.navigate(['/programs', id]);
+  }
+
+  private touchStartX = 0;
+  private touchStartY = 0;
+  private touchFingers = 0;
+
+  @HostListener('window:touchstart', ['$event'])
+  onTouchStart(e: TouchEvent): void {
+    this.touchFingers = e.touches.length;
+    this.touchStartX = e.touches[0].clientX;
+    this.touchStartY = e.touches[0].clientY;
+  }
+
+  @HostListener('window:touchend', ['$event'])
+  onTouchEnd(e: TouchEvent): void {
+    if (this.touchFingers !== 1) return;
+    const dx = e.changedTouches[0].clientX - this.touchStartX;
+    const dy = e.changedTouches[0].clientY - this.touchStartY;
+    if (Math.abs(dx) < 80 || Math.abs(dy) > Math.abs(dx) * 0.5) return;
+    if ((e.target as Element)?.closest?.('.modal-overlay, input, textarea, select, .grid-container')) return;
+    const id = dx > 0 ? this.program()?.prev_program_id : this.program()?.next_program_id;
+    if (id) this.router.navigate(['/programs', id]);
   }
 
   async refresh(): Promise<void> {
@@ -755,6 +810,28 @@ export class ProgramDetailComponent implements OnInit {
 
   toggleDirection(dir: typeof WeightDirection[keyof typeof WeightDirection]): void {
     this.setEditDirection.set(this.setEditDirection() === dir ? null : dir);
+  }
+
+  copySet(): void {
+    this.setClipboard.set({
+      weight: this.setEditWeight(),
+      reps: this.setEditReps(),
+      unit: this.setEditUnit(),
+      direction: this.setEditDirection(),
+      weightMarker: this.setEditWeightMarker(),
+      repsMarker: this.setEditRepsMarker(),
+    });
+  }
+
+  pasteSet(): void {
+    const c = this.setClipboard();
+    if (!c) return;
+    this.setEditWeight.set(c.weight);
+    this.setEditReps.set(c.reps);
+    this.setEditUnit.set(c.unit);
+    this.setEditDirection.set(c.direction);
+    this.setEditWeightMarker.set(c.weightMarker);
+    this.setEditRepsMarker.set(c.repsMarker);
   }
 
   async submitSetEdit(): Promise<void> {

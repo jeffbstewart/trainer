@@ -175,6 +175,19 @@ class ProgramHttpService {
             )
         }
 
+        // Find prev/next programs by sequence for same trainee
+        var prevId: Long? = null
+        var nextId: Long? = null
+        val seq = program.sequence
+        if (seq != null) {
+            val siblings = Program.findAll()
+                .filter { it.trainee_id == program.trainee_id && it.trainer_id == user.id && it.sequence != null }
+                .sortedBy { it.sequence }
+            val idx = siblings.indexOfFirst { it.id == program.id }
+            if (idx > 0) prevId = siblings[idx - 1].id
+            if (idx in 0 until siblings.size - 1) nextId = siblings[idx + 1].id
+        }
+
         val result = mapOf(
             "id" to program.id,
             "name" to program.name,
@@ -184,6 +197,8 @@ class ProgramHttpService {
             "trainer_id" to program.trainer_id,
             "started_at" to program.started_at?.toString(),
             "ended_at" to program.ended_at?.toString(),
+            "prev_program_id" to prevId,
+            "next_program_id" to nextId,
             "workouts" to workoutData
         )
         return json(result)
@@ -379,7 +394,7 @@ class ProgramHttpService {
 
         val se = WorkoutSessionExercise.findAll()
             .firstOrNull { it.workout_session_id == sessionId && it.exercise_id == exerciseId }
-            ?: return HttpResponse.of(HttpStatus.NOT_FOUND)
+            ?: WorkoutSessionExercise(workout_session_id = sessionId, exercise_id = exerciseId)
 
         val body = gson.fromJson(ctx.request().aggregate().join().contentUtf8(), Map::class.java)
         if (body.containsKey("substitute_exercise_id")) {
@@ -402,7 +417,7 @@ class ProgramHttpService {
 
         val se = WorkoutSessionExercise.findAll()
             .firstOrNull { it.workout_session_id == sessionId && it.exercise_id == exerciseId }
-            ?: return HttpResponse.of(HttpStatus.NOT_FOUND)
+            ?: WorkoutSessionExercise(workout_session_id = sessionId, exercise_id = exerciseId).apply { save() }
 
         val body = gson.fromJson(ctx.request().aggregate().join().contentUtf8(), Map::class.java)
         val roundNumber = (body["round_number"] as? Number)?.toInt() ?: return badRequest("round_number required")
