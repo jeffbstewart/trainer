@@ -1,4 +1,4 @@
-import { Component, inject, signal, viewChild, ElementRef, OnInit, ChangeDetectionStrategy, HostListener } from '@angular/core';
+import { Component, inject, signal, computed, viewChild, ElementRef, OnInit, ChangeDetectionStrategy, HostListener } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
@@ -15,7 +15,7 @@ interface ExerciseRef { id: number; name: string; sort_order: number; }
 interface SetData { id: number; round_number: number; weight: number | null; reps: number | null; unit: string; weight_direction: string | null; weight_marker: string | null; reps_marker: string | null; skipped: boolean; }
 interface SessionExerciseData { exercise_id: number; sets: SetData[]; set_style: string | null; resistance_note: string | null; substitute_exercise_id: number | null; substitute_exercise_name: string | null; notes: string | null; }
 interface SessionData { id: number; session_date: string | null; notes: string | null; exercises: SessionExerciseData[]; }
-interface WorkoutData { id: number; name: string; plan_type: string; exercises: ExerciseRef[]; sessions: SessionData[]; }
+interface WorkoutData { id: number; name: string; plan_type: string; exercises: ExerciseRef[]; sessions: SessionData[]; prev_program_workout_id: number | null; next_program_workout_id: number | null; }
 interface ProgramDetail {
   id: number; name: string; sequence: string | null;
   trainee_id: number; trainee_name: string; trainer_id: number;
@@ -31,9 +31,104 @@ const WeightDirection = { UP: 'up', DOWN: 'down' } as const;
 @Component({
   selector: 'app-program-detail',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: { '[class.focused]': 'focusedWorkoutId()' },
   imports: [RouterLink, MatButtonModule, MatIconModule, MatSelectModule, MatFormFieldModule, MatInputModule, CdkDropList, CdkDrag, CdkDragHandle],
   template: `
     @if (program(); as p) {
+      @if (focusedWorkout(); as fw) {
+        <!-- Focused workout view -->
+        <div class="focus-header">
+          <a mat-icon-button [routerLink]="['/programs', p.id]" title="Back to program"><mat-icon>arrow_back</mat-icon></a>
+          <span class="focus-title">{{ fw.name }}</span>
+          <span class="focus-meta">{{ p.name }}</span>
+          <span class="spacer"></span>
+          @if (p.prev_program_id && fw.prev_program_workout_id) {
+            <a mat-icon-button [routerLink]="['/programs', p.prev_program_id, 'workout', fw.prev_program_workout_id]" title="Previous program"><mat-icon>chevron_left</mat-icon></a>
+          }
+          @if (p.next_program_id && fw.next_program_workout_id) {
+            <a mat-icon-button [routerLink]="['/programs', p.next_program_id, 'workout', fw.next_program_workout_id]" title="Next program"><mat-icon>chevron_right</mat-icon></a>
+          }
+          <button mat-icon-button (click)="addSession(fw)" title="New session">
+            <mat-icon>event</mat-icon>
+          </button>
+        </div>
+        @if (fw.exercises.length > 0) {
+          <div class="grid-container focus-grid">
+            <table class="session-grid">
+              <thead>
+                <tr>
+                  <th class="exercise-col">Exercise</th>
+                  @for (session of fw.sessions; track session.id) {
+                    <th [attr.colspan]="maxRounds(session)" class="session-header">
+                      <span class="session-date-cell">
+                        <input type="date" class="date-input" [value]="session.session_date ?? ''"
+                               (change)="updateSessionDate(session, $any($event.target).value)" />
+                      </span>
+                    </th>
+                  }
+                </tr>
+                @if (fw.sessions.length > 0) {
+                  <tr>
+                    <th></th>
+                    @for (session of fw.sessions; track session.id) {
+                      @for (r of roundRange(maxRounds(session)); track r; let last = $last) {
+                        <th class="round-header" [class.session-end]="last">R{{ r }}</th>
+                      }
+                    }
+                  </tr>
+                }
+              </thead>
+              <tbody>
+                @for (exercise of fw.exercises; track exercise.id; let idx = $index) {
+                  @if (fw.sessions.length > 0) {
+                    <tr class="sub-row" [class.sub-row-empty]="!hasAnyOverride(fw, exercise.id)">
+                      <td class="sub-row-label"></td>
+                      @for (session of fw.sessions; track session.id) {
+                        <td class="sub-cell" [attr.colspan]="maxRounds(session)" (click)="openExerciseNote(session, exercise, $event)">
+                          @if (getSessionExercise(session, exercise.id); as se) {
+                            @if (se.substitute_exercise_name || se.resistance_note) {
+                              <span class="sub-text">{{ se.substitute_exercise_name ?? '' }}{{ se.substitute_exercise_name && se.resistance_note ? ' · ' : '' }}{{ se.resistance_note ?? '' }}</span>
+                            } @else {
+                              <span class="sub-text sub-add">+</span>
+                            }
+                          } @else {
+                            <span class="sub-text sub-add">+</span>
+                          }
+                        </td>
+                      }
+                    </tr>
+                  }
+                  <tr [class.exercise-even]="idx % 2 === 1">
+                    <td class="exercise-name">
+                      <div class="exercise-name-inner">
+                        <a [routerLink]="['/exercises', exercise.id]">{{ exercise.name }}</a>
+                      </div>
+                    </td>
+                    @for (session of fw.sessions; track session.id) {
+                      @for (r of roundRange(maxRounds(session)); track r; let last = $last) {
+                        <td class="set-cell" [class.session-end]="last" (click)="openSetEdit(session, exercise, r)">
+                          @if (getSet(session, exercise.id, r); as s) {
+                            @if (s.skipped) {
+                              <div class="set-box set-skipped"></div>
+                            } @else {
+                              <div class="set-box">
+                                <span class="set-weight">{{ formatWeight(s) }}{{ s.weight_marker ?? '' }}{{ s.weight_direction === WeightDirection.UP ? '\u2191' : s.weight_direction === WeightDirection.DOWN ? '\u2193' : '' }}</span>
+                                <span class="set-reps">{{ s.reps ?? '?' }}{{ s.reps_marker ?? '' }}</span>
+                              </div>
+                            }
+                          } @else {
+                            <span class="set-empty">—</span>
+                          }
+                        </td>
+                      }
+                    }
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      } @else {
       <div class="back-row">
         <a mat-button routerLink="/programs"><mat-icon>arrow_back</mat-icon> All Programs</a>
         <span class="spacer"></span>
@@ -78,6 +173,9 @@ const WeightDirection = { UP: 'up', DOWN: 'down' } as const;
             <button mat-stroked-button class="small-btn" (click)="addSession(workout)">
               <mat-icon>event</mat-icon> New Session
             </button>
+            <a mat-stroked-button class="small-btn" [routerLink]="['/programs', p.id, 'workout', workout.id]">
+              <mat-icon>fullscreen</mat-icon> Focus
+            </a>
             @if (!locked()) {
               <button mat-icon-button color="warn" (click)="deleteWorkout(workout)" title="Delete workout">
                 <mat-icon>delete</mat-icon>
@@ -176,6 +274,7 @@ const WeightDirection = { UP: 'up', DOWN: 'down' } as const;
       @if (p.workouts.length === 0) {
         <p class="empty-text">No workouts yet. Add an upper body and lower body workout to get started.</p>
       }
+      } <!-- end @else (non-focused) -->
     }
 
     <!-- Add Workout Dialog -->
@@ -459,6 +558,13 @@ const WeightDirection = { UP: 'up', DOWN: 'down' } as const;
     .sub-picker-label { font-size: 0.8125rem; opacity: 0.6; white-space: nowrap; }
     .sub-picker-btn { text-align: left; min-width: 200px; }
     .spacer { flex: 1; }
+
+    /* Focused workout view */
+    :host(.focused) { display: block; margin: -1.5rem; }
+    .focus-header { display: flex; align-items: center; gap: 0.25rem; padding: 0.25rem 0.5rem; background: var(--mat-sys-surface-container, #efedf0); }
+    .focus-title { font-weight: 600; font-size: 0.875rem; }
+    .focus-meta { font-size: 0.75rem; opacity: 0.5; }
+    .focus-grid { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   `,
 })
 export class ProgramDetailComponent implements OnInit {
@@ -471,6 +577,12 @@ export class ProgramDetailComponent implements OnInit {
 
   readonly program = signal<ProgramDetail | null>(null);
   readonly locked = signal(true);
+  readonly focusedWorkoutId = signal(0);
+  readonly focusedWorkout = computed(() => {
+    const id = this.focusedWorkoutId();
+    if (!id) return null;
+    return this.program()?.workouts.find(w => w.id === id) ?? null;
+  });
   private programId = 0;
 
   // Add workout dialog
@@ -519,25 +631,38 @@ export class ProgramDetailComponent implements OnInit {
   async ngOnInit(): Promise<void> {
     this.route.paramMap.subscribe(async params => {
       this.programId = Number(params.get('programId'));
+      this.focusedWorkoutId.set(Number(params.get('workoutId') ?? 0));
       this.program.set(null);
       await this.refresh();
     });
+  }
+
+  private navigateAdjacent(direction: 'prev' | 'next'): void {
+    const p = this.program();
+    if (!p) return;
+    const fw = this.focusedWorkout();
+    if (fw) {
+      const adjProgramId = direction === 'prev' ? p.prev_program_id : p.next_program_id;
+      const adjWorkoutId = direction === 'prev' ? fw.prev_program_workout_id : fw.next_program_workout_id;
+      if (adjProgramId && adjWorkoutId) this.router.navigate(['/programs', adjProgramId, 'workout', adjWorkoutId]);
+    } else {
+      const id = direction === 'prev' ? p.prev_program_id : p.next_program_id;
+      if (id) this.router.navigate(['/programs', id]);
+    }
   }
 
   @HostListener('window:keydown.ArrowLeft')
   onArrowLeft(): void {
     const tag = document.activeElement?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-    const id = this.program()?.prev_program_id;
-    if (id) this.router.navigate(['/programs', id]);
+    this.navigateAdjacent('prev');
   }
 
   @HostListener('window:keydown.ArrowRight')
   onArrowRight(): void {
     const tag = document.activeElement?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-    const id = this.program()?.next_program_id;
-    if (id) this.router.navigate(['/programs', id]);
+    this.navigateAdjacent('next');
   }
 
   private touchStartX = 0;
@@ -557,9 +682,10 @@ export class ProgramDetailComponent implements OnInit {
     const dx = e.changedTouches[0].clientX - this.touchStartX;
     const dy = e.changedTouches[0].clientY - this.touchStartY;
     if (Math.abs(dx) < 80 || Math.abs(dy) > Math.abs(dx) * 0.5) return;
-    if ((e.target as Element)?.closest?.('.modal-overlay, input, textarea, select, .grid-container')) return;
-    const id = dx > 0 ? this.program()?.prev_program_id : this.program()?.next_program_id;
-    if (id) this.router.navigate(['/programs', id]);
+    const focused = !!this.focusedWorkoutId();
+    if (!focused && (e.target as Element)?.closest?.('.modal-overlay, input, textarea, select, .grid-container')) return;
+    if (focused && (e.target as Element)?.closest?.('.modal-overlay, input, textarea, select')) return;
+    this.navigateAdjacent(dx > 0 ? 'prev' : 'next');
   }
 
   async refresh(): Promise<void> {

@@ -179,13 +179,29 @@ class ProgramHttpService {
         var prevId: Long? = null
         var nextId: Long? = null
         val seq = program.sequence
+        var prevWorkouts = emptyList<WorkoutPlan>()
+        var nextWorkouts = emptyList<WorkoutPlan>()
         if (seq != null) {
             val siblings = Program.findAll()
                 .filter { it.trainee_id == program.trainee_id && it.trainer_id == user.id && it.sequence != null }
                 .sortedBy { it.sequence }
             val idx = siblings.indexOfFirst { it.id == program.id }
-            if (idx > 0) prevId = siblings[idx - 1].id
-            if (idx in 0 until siblings.size - 1) nextId = siblings[idx + 1].id
+            if (idx > 0) {
+                prevId = siblings[idx - 1].id
+                prevWorkouts = WorkoutPlan.findAll().filter { it.program_id == prevId }.sortedBy { it.sort_order }
+            }
+            if (idx in 0 until siblings.size - 1) {
+                nextId = siblings[idx + 1].id
+                nextWorkouts = WorkoutPlan.findAll().filter { it.program_id == nextId }.sortedBy { it.sort_order }
+            }
+        }
+
+        // Map each workout to its equivalent in prev/next programs by sort position
+        val workoutDataWithNav = workoutData.mapIndexed { i, wd ->
+            wd + mapOf(
+                "prev_program_workout_id" to prevWorkouts.getOrNull(i)?.id,
+                "next_program_workout_id" to nextWorkouts.getOrNull(i)?.id
+            )
         }
 
         val result = mapOf(
@@ -199,7 +215,7 @@ class ProgramHttpService {
             "ended_at" to program.ended_at?.toString(),
             "prev_program_id" to prevId,
             "next_program_id" to nextId,
-            "workouts" to workoutData
+            "workouts" to workoutDataWithNav
         )
         return json(result)
     }
